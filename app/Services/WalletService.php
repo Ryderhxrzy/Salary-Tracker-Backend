@@ -8,6 +8,7 @@ use App\Models\LoanPayment;
 use App\Models\SavingsTransaction;
 use App\Models\User;
 use App\Models\Wallet;
+use App\Models\WalletTransfer;
 use App\Support\Money;
 use App\Support\MoneyVersion;
 use Carbon\CarbonImmutable;
@@ -22,6 +23,7 @@ use Illuminate\Support\Facades\Cache;
  *           − expenses paid from the wallet since then
  *           − savings deposited from the wallet + savings withdrawn into it
  *           + loans received into it − money lent from it − loan payments made from it + repayments received into it
+ *           + transfers received from another wallet − transfers sent to another wallet (and their fees)
  */
 class WalletService
 {
@@ -190,6 +192,22 @@ class WalletService
                 }
             });
 
+        // Transfers between the user's own wallets: the amount moves, the fee leaves the source.
+        $transfersIn = [];
+        $transfersOut = [];
+        $user->walletTransfers()->where('transfer_date', '>=', $earliest)->get(['from_wallet_id', 'to_wallet_id', 'transfer_date', 'amount', 'fee'])
+            ->each(function (WalletTransfer $transfer) use (&$transfersIn, &$transfersOut, $wallets) {
+                $date = $transfer->transfer_date->toDateString();
+                $from = $wallets->firstWhere('id', $transfer->from_wallet_id);
+                $to = $wallets->firstWhere('id', $transfer->to_wallet_id);
+                if ($from && $date >= $from->balance_as_of->toDateString()) {
+                    $transfersOut[$from->id] = ($transfersOut[$from->id] ?? 0.0) + $transfer->totalOut();
+                }
+                if ($to && $date >= $to->balance_as_of->toDateString()) {
+                    $transfersIn[$to->id] = ($transfersIn[$to->id] ?? 0.0) + (float) $transfer->amount;
+                }
+            });
+
         foreach ($wallets as $wallet) {
             $salary = $wallet->receives_salary ? $this->salaryReceived($user, $wallet) : 0.0;
             $wallet->salary_received = Money::round($salary);
@@ -197,7 +215,9 @@ class WalletService
             $wallet->saved = Money::round($saved[$wallet->id] ?? 0.0);
             $wallet->loans = Money::round($loans[$wallet->id] ?? 0.0);
             $wallet->other_income = Money::round($income[$wallet->id] ?? 0.0);
-            $wallet->balance = Money::round((float) $wallet->opening_balance + $salary + $wallet->other_income - $wallet->spent - $wallet->saved + $wallet->loans);
+            $wallet->transfers_in = Money::round($transfersIn[$wallet->id] ?? 0.0);
+            $wallet->transfers_out = Money::round($transfersOut[$wallet->id] ?? 0.0);
+            $wallet->balance = Money::round((float) $wallet->opening_balance + $salary + $wallet->other_income - $wallet->spent - $wallet->saved + $wallet->loans + $wallet->transfers_in - $wallet->transfers_out);
         }
 
         return $wallets;
