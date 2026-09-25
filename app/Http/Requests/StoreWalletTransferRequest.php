@@ -23,7 +23,6 @@ class StoreWalletTransferRequest extends ApiFormRequest
             'from_wallet_id' => [$required, 'integer', $owned],
             'to_wallet_id' => [$required, 'integer', 'different:from_wallet_id', $owned],
             'amount' => [$required, 'numeric', 'min:0.01', 'max:999999999'],
-            'fee' => ['nullable', 'numeric', 'min:0', 'max:999999'],
             'transfer_date' => [$required, 'date_format:Y-m-d'],
             'notes' => ['nullable', 'string', 'max:1000'],
         ];
