@@ -22,30 +22,36 @@ class SalaryController extends Controller
     ) {}
 
     /**
-     * GET /salary — settings, rates, current period and its summary.
+     * GET /salary — settings, rates, current period with its computation and the
+     * previous period while it is still waiting for its payday.
      */
     public function index(Request $request): JsonResponse
     {
         $user = $request->user();
         $period = $this->periods->currentPeriod($user);
+        $previous = $this->periods->previousPeriod($user, $period);
+        $previousSummary = $this->periods->compute($user, $previous);
 
         return $this->ok([
             'settings' => new SalarySettingResource($this->salary->settings($user)),
             'rates' => $this->salary->rates($user),
             'period' => new SalaryPeriodResource($period),
-            'summary' => $this->periods->details($user, $period),
+            'summary' => $this->periods->compute($user, $period),
+            'payday' => $previousSummary['status'] === SalaryPeriodService::STATUS_COMPLETED
+                ? ['period' => new SalaryPeriodResource($previous), 'summary' => $previousSummary]
+                : null,
         ]);
     }
 
     /**
-     * GET /salary/periods — current + previous periods, each with a summary.
+     * GET /salary/periods — current + previous periods, each with its computation.
      */
     public function periods(Request $request): JsonResponse
     {
         $user = $request->user();
         $count = min(36, max(1, (int) $request->input('count', 12)));
         $periods = collect($this->periods->recentPeriods($user, $count))->map(function (SalaryPeriod $period) use ($user) {
-            $period->summary = $this->periods->details($user, $period);
+            $period->summary = $this->periods->compute($user, $period);
 
             return $period;
         });
@@ -54,7 +60,7 @@ class SalaryController extends Controller
     }
 
     /**
-     * GET /salary/summary?range=...
+     * GET /salary/summary?range=... — totals for an arbitrary date range.
      */
     public function summary(RangeRequest $request): JsonResponse
     {
