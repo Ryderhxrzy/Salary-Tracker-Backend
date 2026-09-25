@@ -339,7 +339,7 @@ class ApiMutations
 
     public function createGoal($root, array $args, GraphQLContext $context): array
     {
-        $goal = $this->user($context)->savingsGoals()->create($this->validate($args['input'], StoreSavingsGoalRequest::rulesFor(false)));
+        $goal = $this->user($context)->savingsGoals()->create($this->validate($args['input'], StoreSavingsGoalRequest::rulesFor($this->user($context), false)));
 
         return $this->normalize(new SavingsGoalResource($goal));
     }
@@ -349,7 +349,7 @@ class ApiMutations
         /** @var SavingsGoal $goal */
         $goal = $this->owned($this->user($context), 'savingsGoals', (int) $args['id']);
         $this->authorize('update', $goal);
-        $goal->fill($this->validate($args['input'], StoreSavingsGoalRequest::rulesFor(true)));
+        $goal->fill($this->validate($args['input'], StoreSavingsGoalRequest::rulesFor($this->user($context), true)));
         if ($goal->type !== 'spending_limit' && (float) $goal->current_amount >= (float) $goal->target_amount) {
             $goal->is_completed = true;
         }
