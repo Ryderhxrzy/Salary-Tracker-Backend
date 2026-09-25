@@ -31,8 +31,7 @@ class GraphQLTest extends TestCase
         $this->withHeader('Authorization', "Bearer {$token}")
             ->graphQL('{ me { id email } wallets { name type receives_salary institution_id } }')
             ->assertJsonPath('data.me.id', $user->id)
-            ->assertJsonPath('data.wallets.0.name', 'Cash')
-            ->assertJsonPath('data.wallets.1.institution_id', 'gcash');
+            ->assertJsonPath('data.wallets', []);
     }
 
     public function test_dashboard_attendance_and_money_flow(): void
@@ -53,6 +52,7 @@ class GraphQLTest extends TestCase
         $categories = $this->graphQL('{ expenseCategories { id name } }')->json('data.expenseCategories');
         $food = collect($categories)->firstWhere('name', 'Food');
 
+        $this->postJson('/api/wallets', ['name' => 'GCash', 'type' => 'gcash', 'category' => 'ewallet', 'institution_id' => 'gcash'])->assertCreated();
         $this->graphQL('mutation ($input: ExpenseInput!) { createExpense(input: $input) { id amount payment_method wallet { name } category { name } } }', [
             'input' => ['amount' => 120, 'expense_date' => '2026-09-25', 'expense_category_id' => $food['id'], 'payment_method' => 'gcash'],
         ])->assertJsonPath('data.createExpense.wallet.name', 'GCash')->assertJsonPath('data.createExpense.category.name', 'Food');

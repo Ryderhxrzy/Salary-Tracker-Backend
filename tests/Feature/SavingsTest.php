@@ -15,15 +15,16 @@ class SavingsTest extends TestCase
         $this->actingAsTracker();
         $this->travelTo($this->manila('2026-09-22 12:00'));
 
-        // Cash / GCash / Bank are created on first use; cash receives the salary.
+        // Nobody starts with accounts; the user adds Cash and GCash.
+        $this->getJson('/api/wallets')->assertOk()->assertJsonCount(0, 'data');
+        $cash = $this->postJson('/api/wallets', ['name' => 'Cash', 'type' => 'cash', 'category' => 'cash', 'institution_id' => 'cash', 'receives_salary' => true, 'is_default' => true])->assertCreated()->json('data');
+        $gcash = $this->postJson('/api/wallets', ['name' => 'GCash', 'type' => 'gcash', 'category' => 'ewallet', 'institution_id' => 'gcash', 'account_type' => 'ewallet'])->assertCreated()->json('data');
         $wallets = $this->getJson('/api/wallets')->assertOk()->json('data');
         $this->assertSame(['Cash', 'GCash'], array_column($wallets, 'name'));
         $this->assertSame('gcash', $wallets[1]['institution_id']);
         $this->assertSame('ewallet', $wallets[1]['category']);
-        $cash = collect($wallets)->firstWhere('type', 'cash');
-        $gcash = collect($wallets)->firstWhere('type', 'gcash');
-        $this->assertTrue($cash['receives_salary']);
-        $this->assertSame(0.0, (float) $cash['balance']);
+        $this->assertTrue($wallets[0]['receives_salary']);
+        $this->assertSame(0.0, (float) $wallets[0]['balance']);
 
         // Opening balances: ₱2,000 cash on hand, ₱500 in GCash.
         $this->putJson("/api/wallets/{$cash['id']}", ['opening_balance' => 2000])->assertOk();
@@ -44,6 +45,7 @@ class SavingsTest extends TestCase
             ->assertJsonPath('data.goal.name', 'New phone');
 
         $overview = $this->getJson('/api/savings?range=period')->assertOk()->json('data');
+        $this->assertNotEmpty($overview['range']['label']);
         $this->assertSame(300.0, (float) $overview['total_saved']);
         $this->assertSame(300.0, (float) $overview['deposits']);
         $this->assertSame(300.0, (float) $overview['goals'][0]['current_amount']);
@@ -81,10 +83,10 @@ class SavingsTest extends TestCase
     {
         $this->actingAsTracker(true, ['salary_type' => 'per_period', 'basic_salary' => 10000]);
 
-        // Wallets start on Sep 1; work the whole Sep 11-25 cut-off (paid on the 30th).
+        // A cash account from Sep 1 receives the salary; work the whole Sep 11-25 cut-off (paid on the 30th).
         $this->travelTo($this->manila('2026-09-01 09:00'));
+        $cash = $this->postJson('/api/wallets', ['name' => 'Cash', 'type' => 'cash', 'category' => 'cash', 'institution_id' => 'cash', 'receives_salary' => true, 'is_default' => true])->assertCreated()->json('data');
         $wallets = $this->getJson('/api/wallets')->assertOk()->json('data');
-        $cash = collect($wallets)->firstWhere('type', 'cash');
 
         foreach (['11', '12', '14', '15', '16', '17', '18', '19', '21', '22', '23', '24', '25'] as $day) {
             $this->postJson('/api/attendance/manual', ['work_date' => "2026-09-{$day}", 'time_in' => '08:00', 'time_out' => '17:00'])->assertCreated();
@@ -113,7 +115,8 @@ class SavingsTest extends TestCase
     public function test_wallet_validation_and_ownership(): void
     {
         $this->actingAsTracker();
-        $this->getJson('/api/wallets')->assertOk();
+        $this->getJson('/api/wallets')->assertOk()->assertJsonCount(0, 'data');
+        $this->postJson('/api/wallets', ['name' => 'Cash', 'type' => 'cash', 'category' => 'cash', 'institution_id' => 'cash'])->assertCreated();
 
         $created = $this->postJson('/api/wallets', ['name' => 'Maya', 'type' => 'maya', 'category' => 'ewallet', 'institution_id' => 'maya', 'opening_balance' => 50])->assertCreated()
             ->assertJsonPath('data.category', 'ewallet')->json('data');
@@ -124,6 +127,6 @@ class SavingsTest extends TestCase
         $this->postJson('/api/savings/transactions', ['amount' => 10, 'transaction_date' => '2026-09-22', 'wallet_id' => 999999])->assertStatus(422);
 
         $this->deleteJson("/api/wallets/{$created['id']}")->assertOk();
-        $this->assertCount(2, $this->getJson('/api/wallets')->json('data'));
+        $this->assertCount(1, $this->getJson('/api/wallets')->json('data'));
     }
 }

@@ -130,13 +130,14 @@ return [
          * - opcache: store parsed queries in PHP files on the local filesystem to leverage OPcache
          * - hybrid: leverage OPcache, but use a shared cache store when local files are not found
          */
-        'mode' => env('LIGHTHOUSE_QUERY_CACHE_MODE', 'store'),
+        // 'store' breaks on Laravel 13 (cache stores refuse to unserialize AST objects); files + OPcache are safe and fast.
+        'mode' => env('LIGHTHOUSE_QUERY_CACHE_MODE', 'opcache'),
 
         /*
          * Specifies the path where the PHP files are stored when using opcache or hybrid mode.
          * The given path must be a folder, as every query will produce its own file.
          */
-        'opcache_path' => env('LIGHTHOUSE_QUERY_CACHE_OPCACHE_PATH', base_path('bootstrap/cache')),
+        'opcache_path' => env('LIGHTHOUSE_QUERY_CACHE_OPCACHE_PATH', storage_path('framework/cache/lighthouse-queries')),
 
         /*
          * Allows using a specific cache store, uses the app's default if set to null.
