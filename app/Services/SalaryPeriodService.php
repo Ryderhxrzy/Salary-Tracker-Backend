@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\AttendanceRecord;
+use App\Models\LeaveRecord;
 use App\Models\SalaryAdjustment;
 use App\Models\SalaryPeriod;
 use App\Models\SalarySetting;
@@ -13,7 +14,10 @@ use Carbon\CarbonInterface;
 
 class SalaryPeriodService
 {
-    public function __construct(protected SalaryService $salary) {}
+    public function __construct(
+        protected SalaryService $salary,
+        protected WorkScheduleService $schedules,
+    ) {}
 
     /**
      * @return array{start: CarbonImmutable, end: CarbonImmutable, type: string}
@@ -77,10 +81,98 @@ class SalaryPeriodService
         $date = $dateInUserTz ?? CarbonImmutable::now($user->timezone());
         $bounds = $this->boundsFor($settings, $date);
 
-        return $user->salaryPeriods()->firstOrCreate(
+        $period = $user->salaryPeriods()->firstOrCreate(
             ['start_date' => $bounds['start']->toDateString(), 'end_date' => $bounds['end']->toDateString()],
             ['name' => $this->nameFor($bounds['start'], $bounds['end']), 'period_type' => $bounds['type']]
         );
+        $period->pay_date = $this->payDateFor($settings, $bounds['end'])->toDateString();
+
+        return $period;
+    }
+
+    /**
+     * When the cut-off is paid: end date + pay_delay_days. Semi-monthly cut-offs are
+     * paid within the month they end (11-25 => 30th or month end, 26-10 => 15th).
+     */
+    public function payDateFor(SalarySetting $settings, CarbonInterface $end): CarbonImmutable
+    {
+        $end = CarbonImmutable::parse($end->toDateString(), $end->getTimezone());
+        $pay = $end->addDays(max(0, (int) ($settings->pay_delay_days ?? 5)));
+        if ($settings->period_type === 'semi_monthly' && ! $pay->isSameMonth($end)) {
+            $pay = $end->endOfMonth()->startOfDay();
+        }
+
+        return $pay;
+    }
+
+    /**
+     * Summary of a period plus the expected salary for its whole cut-off.
+     */
+    public function details(User $user, SalaryPeriod $period): array
+    {
+        $from = $period->start_date->toDateString();
+        $to = $period->end_date->toDateString();
+
+        return array_merge($this->summary($user, $from, $to), $this->projection($user, $from, $to));
+    }
+
+    /**
+     * Expected pay for a cut-off: what completed days earned, plus the full daily rate
+     * for every scheduled working day still ahead (today counts until timed out) and
+     * for paid leave. Past working days without a completed record add nothing.
+     *
+     * @return array{working_days: int, remaining_days: int, expected_salary: ?float, expected_take_home: ?float}
+     */
+    public function projection(User $user, string $from, string $to): array
+    {
+        $settings = $this->salary->settings($user);
+        $tz = $user->timezone();
+        $today = CarbonImmutable::now($tz)->toDateString();
+        $schedules = $this->schedules->ensureDefaults($user)->keyBy('day_of_week');
+        $leaves = $user->leaveRecords()->whereBetween('leave_date', [$from, $to])->get()
+            ->keyBy(fn (LeaveRecord $leave) => $leave->leave_date->toDateString());
+        $records = $user->attendanceRecords()->betweenDates($from, $to)->get()
+            ->keyBy(fn (AttendanceRecord $record) => $record->work_date->toDateString());
+
+        $workingDays = 0;
+        $remainingDays = 0;
+        $paidLeaveDays = 0;
+        for ($day = CarbonImmutable::parse($from, $tz); $day->toDateString() <= $to; $day = $day->addDay()) {
+            $date = $day->toDateString();
+            $schedule = $schedules->get($day->dayOfWeek);
+            if (! $schedule || ! $schedule->is_working_day) {
+                continue;
+            }
+            $leave = $leaves->get($date);
+            if ($leave) {
+                $paidLeaveDays += $leave->is_paid ? 1 : 0;
+
+                continue;
+            }
+            $workingDays++;
+            $record = $records->get($date);
+            if ($date >= $today && ! ($record && $record->time_out)) {
+                $remainingDays++;
+            }
+        }
+
+        $projection = ['working_days' => $workingDays, 'remaining_days' => $remainingDays, 'expected_salary' => null, 'expected_take_home' => null];
+        if (! $settings->isConfigured()) {
+            return $projection;
+        }
+
+        $daily = $this->salary->dailyRate($user, $settings) ?? 0.0;
+        $earned = Money::sum($records->pluck('salary_amount'));
+        $expected = Money::round($earned + ($remainingDays + $paidLeaveDays) * $daily) ?? 0.0;
+
+        $adjustments = $user->salaryAdjustments()->whereBetween('adjustment_date', [$from, $to])->get();
+        $income = Money::sum($adjustments->filter(fn (SalaryAdjustment $a) => $a->isIncome())->pluck('amount'));
+        $deductions = Money::sum($adjustments->filter(fn (SalaryAdjustment $a) => ! $a->isIncome())->pluck('amount'));
+
+        return array_merge($projection, [
+            'expected_salary' => $expected,
+            'expected_take_home' => Money::round($expected + $income - $deductions),
+        ]);
     }
 
     public function currentPeriod(User $user): SalaryPeriod
@@ -102,10 +194,12 @@ class SalaryPeriodService
 
         for ($i = 0; $i < $count; $i++) {
             $bounds = $this->boundsFor($settings, $cursor);
-            $periods[] = $user->salaryPeriods()->firstOrCreate(
+            $period = $user->salaryPeriods()->firstOrCreate(
                 ['start_date' => $bounds['start']->toDateString(), 'end_date' => $bounds['end']->toDateString()],
                 ['name' => $this->nameFor($bounds['start'], $bounds['end']), 'period_type' => $bounds['type']]
             );
+            $period->pay_date = $this->payDateFor($settings, $bounds['end'])->toDateString();
+            $periods[] = $period;
             $cursor = $bounds['start']->subDay();
         }
 
