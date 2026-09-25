@@ -8,6 +8,11 @@ class RegisterRequest extends ApiFormRequest
 {
     public function rules(): array
     {
+        return static::rulesFor();
+    }
+
+    public static function rulesFor(): array
+    {
         return [
             'name' => ['required', 'string', 'max:100'],
             'email' => ['required', 'string', 'email', 'max:255', 'unique:users,email'],
