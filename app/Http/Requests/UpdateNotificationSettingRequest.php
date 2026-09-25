@@ -6,6 +6,11 @@ class UpdateNotificationSettingRequest extends ApiFormRequest
 {
     public function rules(): array
     {
+        return static::rulesFor();
+    }
+
+    public static function rulesFor(): array
+    {
         return [
             'work_notification' => ['nullable', 'boolean'],
             'work_notification_lead_minutes' => ['nullable', 'integer', 'min:0', 'max:720'],
