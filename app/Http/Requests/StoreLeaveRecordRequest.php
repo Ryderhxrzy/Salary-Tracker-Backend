@@ -9,8 +9,11 @@ class StoreLeaveRecordRequest extends ApiFormRequest
 {
     public function rules(): array
     {
-        $isUpdate = $this->route('leave') !== null;
+        return static::rulesFor($this->route('leave') !== null);
+    }
 
+    public static function rulesFor(bool $isUpdate = false): array
+    {
         return [
             'leave_date' => [$isUpdate ? 'nullable' : 'required', 'date_format:Y-m-d'],
             'type' => [$isUpdate ? 'nullable' : 'required', Rule::in(LeaveRecord::TYPES)],
