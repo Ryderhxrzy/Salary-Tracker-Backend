@@ -23,12 +23,6 @@ class Wallet extends Model
 
     public const ACCOUNT_TYPES = ['savings', 'checking', 'payroll', 'debit', 'credit', 'ewallet', 'virtual_card', 'other'];
 
-    /** Wallets created for every user: the salary is paid in cash by default. */
-    public const DEFAULTS = [
-        ['name' => 'Cash', 'type' => 'cash', 'category' => 'cash', 'institution_id' => 'cash', 'receives_salary' => true, 'is_default' => true],
-        ['name' => 'GCash', 'type' => 'gcash', 'category' => 'ewallet', 'institution_id' => 'gcash', 'account_type' => 'ewallet', 'receives_salary' => false, 'is_default' => false],
-    ];
-
     protected function casts(): array
     {
         return [
