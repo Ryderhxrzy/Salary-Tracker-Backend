@@ -29,6 +29,7 @@ class StoreWalletRequest extends ApiFormRequest
             'balance_as_of' => ['nullable', 'date_format:Y-m-d'],
             'receives_salary' => ['nullable', 'boolean'],
             'is_default' => ['nullable', 'boolean'],
+            'sort_order' => ['nullable', 'integer', 'min:0', 'max:1000'],
         ];
     }
 }
