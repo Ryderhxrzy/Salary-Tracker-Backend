@@ -117,6 +117,7 @@ class DashboardService
             'recent_attendance' => AttendanceRecordResource::collection($recent),
             'money' => [
                 'income' => $summary['take_home'],
+                'other_income' => $summary['other_income'],
                 'expenses' => $summary['expenses'],
                 'savings' => $summary['savings'],
                 'remaining' => $summary['remaining'],
