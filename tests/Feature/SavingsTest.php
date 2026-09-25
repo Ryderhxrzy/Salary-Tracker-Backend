@@ -17,7 +17,9 @@ class SavingsTest extends TestCase
 
         // Cash / GCash / Bank are created on first use; cash receives the salary.
         $wallets = $this->getJson('/api/wallets')->assertOk()->json('data');
-        $this->assertSame(['Cash', 'GCash', 'Bank'], array_column($wallets, 'name'));
+        $this->assertSame(['Cash', 'GCash'], array_column($wallets, 'name'));
+        $this->assertSame('gcash', $wallets[1]['institution_id']);
+        $this->assertSame('ewallet', $wallets[1]['category']);
         $cash = collect($wallets)->firstWhere('type', 'cash');
         $gcash = collect($wallets)->firstWhere('type', 'gcash');
         $this->assertTrue($cash['receives_salary']);
@@ -59,7 +61,7 @@ class SavingsTest extends TestCase
         $dashboard = $this->getJson('/api/dashboard')->assertOk()->json('data.money');
         $this->assertSame(300.0, (float) $dashboard['savings']);
         $this->assertSame(300.0, (float) $dashboard['total_saved']);
-        $this->assertCount(3, $dashboard['wallets']);
+        $this->assertCount(2, $dashboard['wallets']);
 
         // Withdrawing ₱100 back into cash lowers the goal and raises the wallet.
         $this->postJson('/api/savings/transactions', ['type' => 'withdrawal', 'amount' => 100, 'transaction_date' => '2026-09-23', 'savings_goal_id' => $goal['id'], 'wallet_id' => $cash['id']])
@@ -98,8 +100,9 @@ class SavingsTest extends TestCase
         $this->assertSame(10000.0, (float) $wallet['salary_received']);
         $this->assertSame(10000.0, (float) $wallet['balance']);
 
-        // Moving the salary to the bank wallet moves the credit with it.
-        $bank = collect($wallets)->firstWhere('type', 'bank');
+        // Moving the salary to a new BPI payroll account moves the credit with it.
+        $bank = $this->postJson('/api/wallets', ['name' => 'BPI Payroll', 'type' => 'bank', 'category' => 'bank', 'institution_id' => 'bpi', 'account_type' => 'payroll', 'last4' => '1234', 'holder_name' => 'Juan', 'balance_as_of' => '2026-09-01'])
+            ->assertCreated()->assertJsonPath('data.institution_id', 'bpi')->assertJsonPath('data.last4', '1234')->json('data');
         $this->putJson("/api/wallets/{$bank['id']}", ['receives_salary' => true])->assertOk();
         $wallets = collect($this->getJson('/api/wallets')->json('data'));
         $this->assertSame(10000.0, (float) $wallets->firstWhere('id', $bank['id'])['balance']);
@@ -112,12 +115,15 @@ class SavingsTest extends TestCase
         $this->actingAsTracker();
         $this->getJson('/api/wallets')->assertOk();
 
-        $created = $this->postJson('/api/wallets', ['name' => 'Maya', 'type' => 'maya', 'opening_balance' => 50])->assertCreated()->json('data');
+        $created = $this->postJson('/api/wallets', ['name' => 'Maya', 'type' => 'maya', 'category' => 'ewallet', 'institution_id' => 'maya', 'opening_balance' => 50])->assertCreated()
+            ->assertJsonPath('data.category', 'ewallet')->json('data');
         $this->postJson('/api/wallets', ['name' => 'X', 'type' => 'crypto'])->assertStatus(422);
+        $this->postJson('/api/wallets', ['name' => 'X', 'type' => 'bank', 'last4' => '12ab'])->assertStatus(422);
+        $this->postJson('/api/wallets', ['name' => 'X', 'type' => 'bank', 'color' => 'blue'])->assertStatus(422);
         $this->postJson('/api/savings/transactions', ['amount' => 0, 'transaction_date' => '2026-09-22'])->assertStatus(422);
         $this->postJson('/api/savings/transactions', ['amount' => 10, 'transaction_date' => '2026-09-22', 'wallet_id' => 999999])->assertStatus(422);
 
         $this->deleteJson("/api/wallets/{$created['id']}")->assertOk();
-        $this->assertCount(3, $this->getJson('/api/wallets')->json('data'));
+        $this->assertCount(2, $this->getJson('/api/wallets')->json('data'));
     }
 }
