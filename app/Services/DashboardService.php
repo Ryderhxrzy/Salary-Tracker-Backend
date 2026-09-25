@@ -61,6 +61,8 @@ class DashboardService
             'start_label' => $window['start']->format('g:i A'),
             'end_label' => $window['end']->format('g:i A'),
             'break_minutes' => $window['break_minutes'],
+            'break_start' => $window['break_start']?->toIso8601String(),
+            'break_end' => $window['break_end']?->toIso8601String(),
             'expected_minutes' => $window['expected_minutes'],
         ] : null;
 
