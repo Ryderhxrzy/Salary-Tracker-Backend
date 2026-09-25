@@ -22,6 +22,7 @@ class DashboardService
         protected WalletService $wallets,
         protected SavingsService $savings,
         protected LoanService $loans,
+        protected SalaryReceiptService $receipts,
     ) {}
 
     public function build(User $user): array
@@ -114,6 +115,8 @@ class DashboardService
             ],
             'payday' => $payday,
             'next_payday' => $nextPayday,
+            // Finished cut-offs waiting for "Receive salary" (oldest first; several can wait at once).
+            'pending_salary' => $this->receipts->pending($user),
             'recent_attendance' => AttendanceRecordResource::collection($recent),
             'money' => [
                 'income' => $summary['take_home'],
