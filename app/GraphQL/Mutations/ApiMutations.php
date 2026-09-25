@@ -9,6 +9,7 @@ use App\Http\Requests\ManualAttendanceRequest;
 use App\Http\Requests\StoreDeviceTokenRequest;
 use App\Http\Requests\StoreExpenseCategoryRequest;
 use App\Http\Requests\StoreExpenseRequest;
+use App\Http\Requests\StoreIncomeRequest;
 use App\Http\Requests\StoreLeaveRecordRequest;
 use App\Http\Requests\StoreLoanPaymentRequest;
 use App\Http\Requests\StoreLoanRequest;
@@ -24,6 +25,7 @@ use App\Http\Resources\AttendanceRecordResource;
 use App\Http\Resources\DeviceTokenResource;
 use App\Http\Resources\ExpenseCategoryResource;
 use App\Http\Resources\ExpenseResource;
+use App\Http\Resources\IncomeResource;
 use App\Http\Resources\LeaveRecordResource;
 use App\Http\Resources\LoanPaymentResource;
 use App\Http\Resources\LoanResource;
@@ -39,6 +41,7 @@ use App\Models\AttendanceRecord;
 use App\Models\DeviceToken;
 use App\Models\Expense;
 use App\Models\ExpenseCategory;
+use App\Models\Income;
 use App\Models\LeaveRecord;
 use App\Models\Loan;
 use App\Models\LoanPayment;
@@ -487,6 +490,38 @@ class ApiMutations
         $this->loans->deletePayment($payment);
 
         return $this->ok('Payment removed.');
+    }
+
+    // ------------------------------------------------------------------ other income
+
+    public function createIncome($root, array $args, GraphQLContext $context): array
+    {
+        $user = $this->user($context);
+        $data = $this->validate($args['input'], StoreIncomeRequest::rulesFor($user, false));
+        $data['wallet_id'] = $data['wallet_id'] ?? $this->wallets->forMethod($user, null)?->id;
+
+        return $this->normalize(new IncomeResource($user->incomes()->create($data)->load('wallet')));
+    }
+
+    public function updateIncome($root, array $args, GraphQLContext $context): array
+    {
+        $user = $this->user($context);
+        /** @var Income $income */
+        $income = $this->owned($user, 'incomes', (int) $args['id']);
+        $this->authorize('update', $income);
+        $income->fill($this->validate($args['input'], StoreIncomeRequest::rulesFor($user, true)))->save();
+
+        return $this->normalize(new IncomeResource($income->fresh('wallet')));
+    }
+
+    public function deleteIncome($root, array $args, GraphQLContext $context): array
+    {
+        /** @var Income $income */
+        $income = $this->owned($this->user($context), 'incomes', (int) $args['id']);
+        $this->authorize('delete', $income);
+        $income->delete();
+
+        return $this->ok('Income deleted.');
     }
 
     // ------------------------------------------------------------------ devices
