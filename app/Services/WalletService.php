@@ -27,23 +27,17 @@ class WalletService
     public function __construct(protected SalaryPeriodService $periods) {}
 
     /**
-     * Cash / GCash / Bank for a user that has no wallet yet (cash receives the salary).
+     * The user's wallets, loaded once per request. Nothing is created automatically:
+     * the user adds their own accounts (bank, e-wallet, cash).
      *
      * @return Collection<int, Wallet>
      */
     public function ensureDefaults(User $user): Collection
     {
-        if ($user->relationLoaded('wallets') && $user->wallets->isNotEmpty()) {
+        if ($user->relationLoaded('wallets')) {
             return $user->wallets;
         }
         $wallets = $user->wallets()->get();
-        if ($wallets->isEmpty()) {
-            $asOf = CarbonImmutable::now($user->timezone())->toDateString();
-            foreach (Wallet::DEFAULTS as $index => $values) {
-                $user->wallets()->create($values + ['opening_balance' => 0, 'balance_as_of' => $asOf, 'sort_order' => $index]);
-            }
-            $wallets = $user->wallets()->get();
-        }
         $user->setRelation('wallets', $wallets);
 
         return $wallets;
@@ -121,6 +115,9 @@ class WalletService
     public function withBalances(User $user): Collection
     {
         $wallets = $this->ensureDefaults($user);
+        if ($wallets->isEmpty()) {
+            return $wallets;
+        }
         $byType = $wallets->groupBy('type')->map(fn (Collection $group) => $group->sortBy('sort_order')->first());
         $default = $wallets->firstWhere('is_default', true) ?? $wallets->first();
         $earliest = $wallets->min(fn (Wallet $w) => $w->balance_as_of->toDateString());
