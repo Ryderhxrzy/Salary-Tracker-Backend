@@ -13,6 +13,7 @@ use App\Http\Controllers\Api\NotificationSettingController;
 use App\Http\Controllers\Api\ProfileController;
 use App\Http\Controllers\Api\SalaryAdjustmentController;
 use App\Http\Controllers\Api\SalaryController;
+use App\Http\Controllers\Api\SalaryReceiptController;
 use App\Http\Controllers\Api\SalarySettingController;
 use App\Http\Controllers\Api\SavingsController;
 use App\Http\Controllers\Api\SavingsGoalController;
@@ -87,6 +88,9 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::put('savings/transactions/{transaction}', [SavingsController::class, 'update'])->whereNumber('transaction');
     Route::delete('savings/transactions/{transaction}', [SavingsController::class, 'destroy'])->whereNumber('transaction');
     Route::apiResource('wallets', WalletController::class)->only(['index', 'store', 'update', 'destroy']);
+    // "Receive salary": confirm a finished cut-off's pay arrived (credits the salary wallet) / undo.
+    Route::post('salary-receipts', [SalaryReceiptController::class, 'store']);
+    Route::delete('salary-receipts/{receipt}', [SalaryReceiptController::class, 'destroy'])->whereNumber('receipt');
     // Money moved from one wallet to another (cash-in, cash-out, bank withdrawal…).
     Route::apiResource('wallet-transfers', WalletTransferController::class)->only(['index', 'store', 'update', 'destroy'])->parameters(['wallet-transfers' => 'transfer']);
 
