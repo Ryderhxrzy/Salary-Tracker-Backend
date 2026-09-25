@@ -9,7 +9,11 @@ class StoreWalletRequest extends ApiFormRequest
 {
     public function rules(): array
     {
-        $isUpdate = $this->route('wallet') !== null;
+        return static::rulesFor($this->route('wallet') !== null);
+    }
+
+    public static function rulesFor(bool $isUpdate = false): array
+    {
         $required = $isUpdate ? 'sometimes' : 'required';
 
         return [
