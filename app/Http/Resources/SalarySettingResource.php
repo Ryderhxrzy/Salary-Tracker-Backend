@@ -16,6 +16,7 @@ class SalarySettingResource extends JsonResource
         return [
             'configured' => $this->isConfigured(),
             'salary_type' => $this->salary_type,
+            'basic_salary' => $money($this->basic_salary),
             'daily_rate' => $money($this->daily_rate),
             'hourly_rate' => $money($this->hourly_rate),
             'weekly_rate' => $money($this->weekly_rate),
