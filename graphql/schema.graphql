@@ -50,6 +50,8 @@ type Query {
   loans(status: String): [Loan!]! @guard @field(resolver: "App\\GraphQL\\Queries\\ApiQueries@loans")
   loan(id: Int!): Loan! @guard @field(resolver: "App\\GraphQL\\Queries\\ApiQueries@loan")
   loansOverview(range: String, from: String, to: String): LoanOverview! @guard @field(resolver: "App\\GraphQL\\Queries\\ApiQueries@loansOverview")
+  "Other income (side hustle, freelance, gifts…) in a range."
+  incomes(range: String, from: String, to: String): IncomeList! @guard @field(resolver: "App\\GraphQL\\Queries\\ApiQueries@incomes")
 }
 
 # ---------------------------------------------------------------------------
@@ -104,6 +106,9 @@ type Mutation {
   createLoanPayment(loan_id: Int!, input: LoanPaymentInput!): LoanPayment! @guard @field(resolver: "App\\GraphQL\\Mutations\\ApiMutations@createLoanPayment")
   updateLoanPayment(id: Int!, input: LoanPaymentInput!): LoanPayment! @guard @field(resolver: "App\\GraphQL\\Mutations\\ApiMutations@updateLoanPayment")
   deleteLoanPayment(id: Int!): Result! @guard @field(resolver: "App\\GraphQL\\Mutations\\ApiMutations@deleteLoanPayment")
+  createIncome(input: IncomeInput!): Income! @guard @field(resolver: "App\\GraphQL\\Mutations\\ApiMutations@createIncome")
+  updateIncome(id: Int!, input: IncomeInput!): Income! @guard @field(resolver: "App\\GraphQL\\Mutations\\ApiMutations@updateIncome")
+  deleteIncome(id: Int!): Result! @guard @field(resolver: "App\\GraphQL\\Mutations\\ApiMutations@deleteIncome")
 
   registerDeviceToken(input: DeviceTokenInput!): DeviceToken! @guard @field(resolver: "App\\GraphQL\\Mutations\\ApiMutations@registerDeviceToken")
   deleteDeviceToken(id: Int!): Result! @guard @field(resolver: "App\\GraphQL\\Mutations\\ApiMutations@deleteDeviceToken")
@@ -383,6 +388,7 @@ type PeriodComputation {
   loan_deductions: Float!
   loan_payments: Float!
   loan_received: Float!
+  other_income: Float!
   remaining: Float!
   progress: Float!
   days: [PeriodDay!]!
@@ -405,6 +411,7 @@ type PeriodSummary {
   loan_deductions: Float!
   loan_payments: Float!
   loan_received: Float!
+  other_income: Float!
   remaining: Float!
   days_worked: Int!
   days_absent: Int!
@@ -456,11 +463,17 @@ type SalaryAdjustment {
   signed_amount: Float!
   description: String
   adjustment_date: String!
+  "Applied every payday from adjustment_date on (SSS, Pag-IBIG, allowance…)."
+  recurring: Boolean!
+  recurring_until: String
   notes: String
 }
 
 type AdjustmentList {
   range: RangeInfo!
+  "Totals of the entries that apply to the range."
+  income: Float!
+  deductions: Float!
   adjustments: [SalaryAdjustment!]!
 }
 
@@ -658,6 +671,26 @@ type Wallet {
   spent: Float
   saved: Float
   loans: Float
+  other_income: Float
+}
+
+type Income {
+  id: Int!
+  "side_hustle | freelance | business | gift | refund | other"
+  type: String!
+  source: String
+  amount: Float!
+  income_date: String!
+  wallet_id: Int
+  wallet: WalletRef
+  notes: String
+  created_at: String
+}
+
+type IncomeList {
+  range: RangeInfo!
+  total: Float!
+  incomes: [Income!]!
 }
 
 type LoanRef {
@@ -762,6 +795,7 @@ type SavingsOverview {
 
 type MoneyOverview {
   income: Float!
+  other_income: Float!
   expenses: Float!
   savings: Float!
   remaining: Float!
@@ -934,6 +968,8 @@ input AdjustmentInput {
   amount: Float
   description: String
   adjustment_date: String
+  recurring: Boolean
+  recurring_until: String
   notes: String
 }
 
@@ -1012,6 +1048,15 @@ input LoanPaymentInput {
   payment_date: String
   wallet_id: Int
   via_payroll: Boolean
+  notes: String
+}
+
+input IncomeInput {
+  amount: Float
+  income_date: String
+  type: String
+  source: String
+  wallet_id: Int
   notes: String
 }
 
