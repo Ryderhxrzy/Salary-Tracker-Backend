@@ -268,7 +268,7 @@ class ApiQueries
         $user = $this->user($context);
         $range = $this->resolveRange($user, $args);
 
-        return $this->normalize($this->savings->overview($user, $range['from'], $range['to']));
+        return $this->normalize($this->savings->overview($user, $range));
     }
 
     public function savingsTransactions($root, array $args, GraphQLContext $context): array
