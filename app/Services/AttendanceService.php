@@ -235,12 +235,20 @@ class AttendanceService
         $settings = $this->salary->settings($user);
 
         $expected = $window ? $window['expected_minutes'] : (int) round((float) $settings->expected_hours_per_day * 60);
-        $total = (int) $record->time_in->diffInMinutes($record->time_out);
-        $worked = max(0, $total - $this->breakOverlapMinutes($record, $window));
+        $timeIn = CarbonImmutable::instance($record->time_in);
+        $timeOut = CarbonImmutable::instance($record->time_out);
+        // Arriving early does not count: work is counted from the scheduled start.
+        $from = $window && $timeIn->lessThan($window['start']) ? $window['start'] : $timeIn;
+        $total = $timeOut->greaterThan($from) ? (int) $from->diffInMinutes($timeOut) : 0;
+        $worked = max(0, $total - $this->breakOverlapMinutes($from, $timeOut, (int) $record->break_minutes, $window));
 
         if ($settings->overtime_enabled) {
             $regular = min($worked, $expected);
-            $overtime = max(0, $worked - $expected);
+            // Overtime only counts when the time out reaches the threshold after the shift
+            // (5:00 PM end + 60 min => 6:00 PM); it is then counted from the end of the shift.
+            $threshold = (int) ($settings->overtime_threshold_minutes ?? 60);
+            $otFrom = $window ? $window['end'] : $from->addMinutes($expected);
+            $overtime = $timeOut->greaterThanOrEqualTo($otFrom->addMinutes($threshold)) ? max(0, $worked - $expected) : 0;
         } else {
             $regular = $worked;
             $overtime = 0;
@@ -367,20 +375,16 @@ class AttendanceService
     }
 
     /**
-     * Break minutes that fall inside the shift. The break is placed in the middle of the
+     * Break minutes that fall inside the worked time. The break is in the middle of the
      * scheduled window (8:00-5:00 with 60 min => 12:00-1:00), so a half day that never
      * reaches lunch is not charged for it. Without a schedule the whole break applies
      * only to shifts long enough to include one.
      */
-    protected function breakOverlapMinutes(AttendanceRecord $record, ?array $window): int
+    protected function breakOverlapMinutes(CarbonImmutable $in, CarbonImmutable $out, int $break, ?array $window): int
     {
-        $break = (int) $record->break_minutes;
         if ($break <= 0) {
             return 0;
         }
-
-        $in = CarbonImmutable::instance($record->time_in);
-        $out = CarbonImmutable::instance($record->time_out);
 
         if (! $window) {
             return (int) $in->diffInMinutes($out) > $break * 4 ? $break : 0;
