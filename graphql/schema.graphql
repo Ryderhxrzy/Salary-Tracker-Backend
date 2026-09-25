@@ -1,0 +1,873 @@
+"""
+Salary Tracker GraphQL API (POST /api/graphql, `Authorization: Bearer <token>`).
+
+Every type mirrors the JSON of the matching REST endpoint (same snake_case
+fields, same numbers), and every resolver runs through the same services and
+validation rules, so the two APIs never disagree.
+"""
+
+scalar JSON @scalar(class: "App\\GraphQL\\Scalars\\JSON")
+
+# ---------------------------------------------------------------------------
+# Queries
+# ---------------------------------------------------------------------------
+type Query {
+  "The signed-in account."
+  me: User! @guard @field(resolver: "App\\GraphQL\\Queries\\ApiQueries@me")
+  "Everything the Home screen needs in one call."
+  dashboard: Dashboard! @guard @field(resolver: "App\\GraphQL\\Queries\\ApiQueries@dashboard")
+
+  profile: Profile! @guard @field(resolver: "App\\GraphQL\\Queries\\ApiQueries@profile")
+  salarySettings: SalarySettingsPayload! @guard @field(resolver: "App\\GraphQL\\Queries\\ApiQueries@salarySettings")
+  workSchedule: [WorkScheduleDay!]! @guard @field(resolver: "App\\GraphQL\\Queries\\ApiQueries@workSchedule")
+  notificationSettings: NotificationSettings! @guard @field(resolver: "App\\GraphQL\\Queries\\ApiQueries@notificationSettings")
+  notificationPlan: NotificationPlan! @guard @field(resolver: "App\\GraphQL\\Queries\\ApiQueries@notificationPlan")
+
+  attendance(range: String, from: String, to: String): AttendanceList! @guard @field(resolver: "App\\GraphQL\\Queries\\ApiQueries@attendance")
+  attendanceToday: AttendanceToday! @guard @field(resolver: "App\\GraphQL\\Queries\\ApiQueries@attendanceToday")
+  attendanceRecord(id: Int!): AttendanceRecord! @guard @field(resolver: "App\\GraphQL\\Queries\\ApiQueries@attendanceRecord")
+  leaveRecords(range: String, from: String, to: String): LeaveList! @guard @field(resolver: "App\\GraphQL\\Queries\\ApiQueries@leaveRecords")
+
+  salary: SalaryOverview! @guard @field(resolver: "App\\GraphQL\\Queries\\ApiQueries@salary")
+  salaryPeriods(count: Int): [SalaryPeriod!]! @guard @field(resolver: "App\\GraphQL\\Queries\\ApiQueries@salaryPeriods")
+  salarySummary(range: String, from: String, to: String): SalarySummaryPayload! @guard @field(resolver: "App\\GraphQL\\Queries\\ApiQueries@salarySummary")
+  salaryAdjustments(range: String, from: String, to: String): AdjustmentList! @guard @field(resolver: "App\\GraphQL\\Queries\\ApiQueries@salaryAdjustments")
+
+  expenses(range: String, from: String, to: String, category_id: Int, search: String, per_page: Int, page: Int): ExpenseList! @guard @field(resolver: "App\\GraphQL\\Queries\\ApiQueries@expenses")
+  expenseSummary(range: String, from: String, to: String): ExpenseSummary! @guard @field(resolver: "App\\GraphQL\\Queries\\ApiQueries@expenseSummary")
+  expense(id: Int!): Expense! @guard @field(resolver: "App\\GraphQL\\Queries\\ApiQueries@expense")
+  expenseCategories: [ExpenseCategory!]! @guard @field(resolver: "App\\GraphQL\\Queries\\ApiQueries@expenseCategories")
+
+  statistics(range: String, from: String, to: String): Statistics! @guard @field(resolver: "App\\GraphQL\\Queries\\ApiQueries@statistics")
+  calendar(year: Int, month: Int): CalendarMonth! @guard @field(resolver: "App\\GraphQL\\Queries\\ApiQueries@calendar")
+
+  goals: [SavingsGoal!]! @guard @field(resolver: "App\\GraphQL\\Queries\\ApiQueries@goals")
+  savings(range: String, from: String, to: String): SavingsOverview! @guard @field(resolver: "App\\GraphQL\\Queries\\ApiQueries@savings")
+  savingsTransactions(range: String, from: String, to: String, goal_id: Int): SavingsTransactionList! @guard @field(resolver: "App\\GraphQL\\Queries\\ApiQueries@savingsTransactions")
+  wallets: [Wallet!]! @guard @field(resolver: "App\\GraphQL\\Queries\\ApiQueries@wallets")
+}
+
+# ---------------------------------------------------------------------------
+# Mutations
+# ---------------------------------------------------------------------------
+type Mutation {
+  login(input: LoginInput!): AuthPayload! @throttle(name: "auth") @field(resolver: "App\\GraphQL\\Mutations\\AuthMutations@login")
+  register(input: RegisterInput!): AuthPayload! @throttle(name: "auth") @field(resolver: "App\\GraphQL\\Mutations\\AuthMutations@register")
+  logout: Result! @guard @field(resolver: "App\\GraphQL\\Mutations\\AuthMutations@logout")
+
+  updateProfile(input: ProfileInput!): Profile! @guard @field(resolver: "App\\GraphQL\\Mutations\\ApiMutations@updateProfile")
+  updateSalarySettings(input: SalarySettingsInput!): SalarySettingsPayload! @guard @field(resolver: "App\\GraphQL\\Mutations\\ApiMutations@updateSalarySettings")
+  updateWorkSchedule(days: [WorkScheduleDayInput!]!): [WorkScheduleDay!]! @guard @field(resolver: "App\\GraphQL\\Mutations\\ApiMutations@updateWorkSchedule")
+  updateNotificationSettings(input: NotificationSettingsInput!): NotificationSettings! @guard @field(resolver: "App\\GraphQL\\Mutations\\ApiMutations@updateNotificationSettings")
+
+  timeIn(input: AttendanceActionInput): AttendanceActionResult! @guard @throttle(name: "attendance") @field(resolver: "App\\GraphQL\\Mutations\\ApiMutations@timeIn")
+  timeOut(input: AttendanceActionInput): AttendanceActionResult! @guard @throttle(name: "attendance") @field(resolver: "App\\GraphQL\\Mutations\\ApiMutations@timeOut")
+  saveManualAttendance(input: ManualAttendanceInput!): AttendanceRecord! @guard @field(resolver: "App\\GraphQL\\Mutations\\ApiMutations@saveManualAttendance")
+  updateAttendance(id: Int!, input: ManualAttendanceInput!): AttendanceRecord! @guard @field(resolver: "App\\GraphQL\\Mutations\\ApiMutations@updateAttendance")
+  deleteAttendance(id: Int!): Result! @guard @field(resolver: "App\\GraphQL\\Mutations\\ApiMutations@deleteAttendance")
+
+  createLeave(input: LeaveInput!): LeaveRecord! @guard @field(resolver: "App\\GraphQL\\Mutations\\ApiMutations@createLeave")
+  updateLeave(id: Int!, input: LeaveInput!): LeaveRecord! @guard @field(resolver: "App\\GraphQL\\Mutations\\ApiMutations@updateLeave")
+  deleteLeave(id: Int!): Result! @guard @field(resolver: "App\\GraphQL\\Mutations\\ApiMutations@deleteLeave")
+
+  createAdjustment(input: AdjustmentInput!): SalaryAdjustment! @guard @field(resolver: "App\\GraphQL\\Mutations\\ApiMutations@createAdjustment")
+  updateAdjustment(id: Int!, input: AdjustmentInput!): SalaryAdjustment! @guard @field(resolver: "App\\GraphQL\\Mutations\\ApiMutations@updateAdjustment")
+  deleteAdjustment(id: Int!): Result! @guard @field(resolver: "App\\GraphQL\\Mutations\\ApiMutations@deleteAdjustment")
+
+  createExpense(input: ExpenseInput!): Expense! @guard @field(resolver: "App\\GraphQL\\Mutations\\ApiMutations@createExpense")
+  updateExpense(id: Int!, input: ExpenseInput!): Expense! @guard @field(resolver: "App\\GraphQL\\Mutations\\ApiMutations@updateExpense")
+  deleteExpense(id: Int!): Result! @guard @field(resolver: "App\\GraphQL\\Mutations\\ApiMutations@deleteExpense")
+  createExpenseCategory(input: ExpenseCategoryInput!): ExpenseCategory! @guard @field(resolver: "App\\GraphQL\\Mutations\\ApiMutations@createExpenseCategory")
+  updateExpenseCategory(id: Int!, input: ExpenseCategoryInput!): ExpenseCategory! @guard @field(resolver: "App\\GraphQL\\Mutations\\ApiMutations@updateExpenseCategory")
+  deleteExpenseCategory(id: Int!): Result! @guard @field(resolver: "App\\GraphQL\\Mutations\\ApiMutations@deleteExpenseCategory")
+
+  createGoal(input: GoalInput!): SavingsGoal! @guard @field(resolver: "App\\GraphQL\\Mutations\\ApiMutations@createGoal")
+  updateGoal(id: Int!, input: GoalInput!): SavingsGoal! @guard @field(resolver: "App\\GraphQL\\Mutations\\ApiMutations@updateGoal")
+  deleteGoal(id: Int!): Result! @guard @field(resolver: "App\\GraphQL\\Mutations\\ApiMutations@deleteGoal")
+
+  createSavingsTransaction(input: SavingsTransactionInput!): SavingsTransaction! @guard @field(resolver: "App\\GraphQL\\Mutations\\ApiMutations@createSavingsTransaction")
+  updateSavingsTransaction(id: Int!, input: SavingsTransactionInput!): SavingsTransaction! @guard @field(resolver: "App\\GraphQL\\Mutations\\ApiMutations@updateSavingsTransaction")
+  deleteSavingsTransaction(id: Int!): Result! @guard @field(resolver: "App\\GraphQL\\Mutations\\ApiMutations@deleteSavingsTransaction")
+
+  createWallet(input: WalletInput!): Wallet! @guard @field(resolver: "App\\GraphQL\\Mutations\\ApiMutations@createWallet")
+  updateWallet(id: Int!, input: WalletInput!): Wallet! @guard @field(resolver: "App\\GraphQL\\Mutations\\ApiMutations@updateWallet")
+  deleteWallet(id: Int!): Result! @guard @field(resolver: "App\\GraphQL\\Mutations\\ApiMutations@deleteWallet")
+
+  registerDeviceToken(input: DeviceTokenInput!): DeviceToken! @guard @field(resolver: "App\\GraphQL\\Mutations\\ApiMutations@registerDeviceToken")
+  deleteDeviceToken(id: Int!): Result! @guard @field(resolver: "App\\GraphQL\\Mutations\\ApiMutations@deleteDeviceToken")
+}
+
+# ---------------------------------------------------------------------------
+# Auth / profile / settings
+# ---------------------------------------------------------------------------
+type Result {
+  success: Boolean!
+  message: String
+}
+
+type AuthPayload {
+  token: String!
+  user: User!
+}
+
+type User {
+  id: Int!
+  name: String!
+  email: String!
+  profile: Profile
+  salary_configured: Boolean
+  created_at: String
+}
+
+type Profile {
+  full_name: String
+  nickname: String
+  position: String
+  company: String
+  employment_type: String
+  timezone: String!
+  currency: String!
+  late_grace_minutes: Int!
+}
+
+type SalarySettings {
+  configured: Boolean!
+  salary_type: String
+  basic_salary: Float
+  daily_rate: Float
+  hourly_rate: Float
+  weekly_rate: Float
+  biweekly_rate: Float
+  monthly_rate: Float
+  expected_hours_per_day: Float!
+  overtime_enabled: Boolean!
+  overtime_multiplier: Float!
+  overtime_hourly_rate: Float
+  prorate_undertime: Boolean!
+  deduct_absences: Boolean!
+  period_type: String
+  period_start_day: Int
+  period_second_day: Int
+  period_start_weekday: Int
+  period_anchor_date: String
+  custom_period_days: Int
+  pay_delay_days: Int
+  overtime_threshold_minutes: Int
+}
+
+type SalaryRates {
+  configured: Boolean!
+  salary_type: String
+  basic_per_period: Float
+  monthly_equivalent: Float
+  daily_rate: Float
+  hourly_rate: Float
+  overtime_hourly_rate: Float
+  expected_hours_per_day: Float!
+  overtime_enabled: Boolean!
+  overtime_threshold_minutes: Int!
+}
+
+type SalarySettingsPayload {
+  settings: SalarySettings!
+  rates: SalaryRates!
+}
+
+type WorkScheduleDay {
+  day_of_week: Int!
+  day_name: String!
+  is_working_day: Boolean!
+  start_time: String
+  end_time: String
+  break_minutes: Int!
+  expected_minutes: Int!
+}
+
+type NotificationSettings {
+  work_notification: Boolean!
+  work_notification_lead_minutes: Int!
+  before_work_reminder: Boolean!
+  before_work_minutes: Int!
+  still_on_duty_reminder: Boolean!
+  still_on_duty_minutes: Int!
+  salary_period_reminder: Boolean!
+  expense_reminder: Boolean!
+  expense_reminder_time: String!
+}
+
+type NotificationPlan {
+  enabled: Boolean!
+  timezone: String!
+  server_time: String!
+  current: NotificationCurrent!
+  upcoming: [NotificationPlanDay!]!
+  reminders: NotificationReminders!
+}
+
+type NotificationCurrent {
+  state: String!
+  date: String!
+  time_in: String
+  time_out: String
+  scheduled_start: String
+  scheduled_end: String
+  break_start: String
+  break_end: String
+  show_at: String
+  time_in_label: String
+}
+
+type NotificationPlanDay {
+  date: String!
+  scheduled_start: String!
+  scheduled_end: String!
+  break_start: String
+  break_end: String
+  show_at: String!
+}
+
+type ReminderMinutes {
+  enabled: Boolean!
+  minutes: Int!
+}
+
+type ReminderPeriod {
+  enabled: Boolean!
+  period_end: String!
+}
+
+type ReminderTime {
+  enabled: Boolean!
+  time: String!
+}
+
+type NotificationReminders {
+  before_work: ReminderMinutes!
+  still_on_duty: ReminderMinutes!
+  salary_period: ReminderPeriod!
+  expense: ReminderTime!
+}
+
+type DeviceToken {
+  id: Int!
+  token: String!
+  platform: String
+  device_name: String
+  last_seen_at: String
+}
+
+# ---------------------------------------------------------------------------
+# Attendance
+# ---------------------------------------------------------------------------
+type RangeInfo {
+  from: String!
+  to: String!
+  label: String!
+}
+
+type AttendanceRecord {
+  id: Int!
+  work_date: String!
+  scheduled_start: String
+  scheduled_end: String
+  time_in: String
+  time_out: String
+  time_in_label: String
+  time_out_label: String
+  break_minutes: Int!
+  worked_minutes: Int!
+  regular_minutes: Int!
+  overtime_minutes: Int!
+  late_minutes: Int!
+  status: String!
+  source: String!
+  is_on_duty: Boolean!
+  is_completed: Boolean!
+  regular_amount: Float
+  overtime_amount: Float
+  salary_amount: Float
+  notes: String
+  updated_at: String
+}
+
+type AttendanceList {
+  range: RangeInfo!
+  records: [AttendanceRecord!]!
+}
+
+type AttendanceToday {
+  state: String!
+  date: String!
+  attendance: AttendanceRecord
+  notification: NotificationPlan!
+}
+
+type AttendanceActionResult {
+  attendance: AttendanceRecord!
+  already_recorded: Boolean!
+  state: String!
+  notification: NotificationPlan!
+}
+
+type LeaveRecord {
+  id: Int!
+  leave_date: String!
+  type: String!
+  is_paid: Boolean!
+  notes: String
+}
+
+type LeaveList {
+  range: RangeInfo!
+  records: [LeaveRecord!]!
+}
+
+# ---------------------------------------------------------------------------
+# Salary
+# ---------------------------------------------------------------------------
+type PeriodDay {
+  date: String!
+  status: String!
+}
+
+"The one salary computation of a pay period (dashboard, salary screen, history)."
+type PeriodComputation {
+  from: String!
+  to: String!
+  pay_date: String!
+  status: String!
+  days_until_pay: Int!
+  is_current: Boolean!
+  tracked: Boolean!
+  salary_configured: Boolean!
+  basic_salary: Float
+  daily_rate: Float
+  working_days: Int!
+  days_done: Int!
+  days_remaining: Int!
+  days_worked: Int!
+  days_late: Int!
+  days_absent: Int!
+  days_leave: Int!
+  days_unpaid_leave: Int!
+  days_incomplete: Int!
+  days_rest_worked: Int!
+  worked_minutes: Int!
+  regular_minutes: Int!
+  overtime_minutes: Int!
+  late_minutes: Int!
+  undertime_minutes: Int!
+  absence_deduction: Float
+  undertime_deduction: Float
+  overtime_pay: Float
+  rest_day_pay: Float
+  salary: Float
+  earned_to_date: Float
+  additional_income: Float!
+  deductions: Float!
+  take_home: Float!
+  expenses: Float!
+  savings: Float!
+  remaining: Float!
+  progress: Float!
+  days: [PeriodDay!]!
+}
+
+"Totals of an arbitrary date range (attendance screen, statistics, calendar)."
+type PeriodSummary {
+  from: String!
+  to: String!
+  salary_configured: Boolean!
+  regular_pay: Float
+  overtime_pay: Float
+  salary_earned: Float
+  additional_income: Float!
+  deductions: Float!
+  absence_deduction: Float!
+  total_income: Float!
+  expenses: Float!
+  savings: Float!
+  remaining: Float!
+  days_worked: Int!
+  days_absent: Int!
+  days_late: Int!
+  days_leave: Int!
+  days_incomplete: Int!
+  worked_minutes: Int!
+  regular_minutes: Int!
+  overtime_minutes: Int!
+  late_minutes: Int!
+  scheduled_days: Int
+  average_minutes_per_day: Int
+}
+
+type SalaryPeriod {
+  id: Int!
+  name: String!
+  period_type: String!
+  start_date: String!
+  end_date: String!
+  pay_date: String
+  status: String!
+  summary: PeriodComputation
+}
+
+type PeriodWithSummary {
+  period: SalaryPeriod!
+  summary: PeriodComputation!
+}
+
+type SalaryOverview {
+  settings: SalarySettings!
+  rates: SalaryRates!
+  period: SalaryPeriod!
+  summary: PeriodComputation!
+  payday: PeriodWithSummary
+}
+
+type SalarySummaryPayload {
+  range: RangeInfo!
+  summary: PeriodSummary!
+}
+
+type SalaryAdjustment {
+  id: Int!
+  type: String!
+  is_income: Boolean!
+  amount: Float!
+  signed_amount: Float!
+  description: String
+  adjustment_date: String!
+  notes: String
+}
+
+type AdjustmentList {
+  range: RangeInfo!
+  adjustments: [SalaryAdjustment!]!
+}
+
+# ---------------------------------------------------------------------------
+# Expenses
+# ---------------------------------------------------------------------------
+type ExpenseCategory {
+  id: Int!
+  name: String!
+  icon: String
+  color: String
+  is_default: Boolean!
+  sort_order: Int!
+}
+
+type WalletRef {
+  id: Int!
+  name: String!
+  type: String!
+}
+
+type Expense {
+  id: Int!
+  amount: Float!
+  description: String
+  expense_date: String!
+  payment_method: String!
+  wallet_id: Int
+  wallet: WalletRef
+  notes: String
+  category_id: Int
+  category: ExpenseCategory
+  created_at: String
+}
+
+type Pagination {
+  current_page: Int!
+  last_page: Int!
+  per_page: Int!
+  total: Int!
+}
+
+type ExpenseList {
+  range: RangeInfo!
+  total: Float!
+  expenses: [Expense!]!
+  pagination: Pagination!
+}
+
+type ExpenseCategoryTotal {
+  category_id: Int
+  name: String!
+  icon: String
+  color: String!
+  total: Float!
+  count: Int!
+}
+
+type ExpenseSummary {
+  range: RangeInfo!
+  total: Float!
+  by_category: [ExpenseCategoryTotal!]!
+  "Totals per day: { \"2026-09-01\": 120.0, ... }"
+  by_day: JSON!
+}
+
+# ---------------------------------------------------------------------------
+# Reports
+# ---------------------------------------------------------------------------
+type DateRange {
+  from: String!
+  to: String!
+}
+
+type StatisticsSeriesPoint {
+  date: String!
+  is_working_day: Boolean!
+  status: String
+  worked_minutes: Int!
+  regular_minutes: Int!
+  overtime_minutes: Int!
+  salary: Float
+  expenses: Float!
+}
+
+type Statistics {
+  label: String!
+  range: DateRange!
+  summary: PeriodSummary!
+  series: [StatisticsSeriesPoint!]!
+  expenses_by_category: [ExpenseCategoryTotal!]!
+}
+
+type CalendarSchedule {
+  start_label: String!
+  end_label: String!
+}
+
+type CalendarLeave {
+  type: String!
+  notes: String
+  is_paid: Boolean!
+}
+
+type CalendarDay {
+  date: String!
+  day: Int!
+  day_of_week: Int!
+  is_today: Boolean!
+  is_working_day: Boolean!
+  status: String!
+  schedule: CalendarSchedule
+  leave: CalendarLeave
+  time_in: String
+  time_out: String
+  worked_minutes: Int!
+  overtime_minutes: Int!
+  salary: Float
+  expenses: Float!
+  attendance_id: Int
+}
+
+type CalendarMonth {
+  year: Int!
+  month: Int!
+  from: String!
+  to: String!
+  days: [CalendarDay!]!
+  summary: PeriodSummary!
+}
+
+# ---------------------------------------------------------------------------
+# Savings / wallets
+# ---------------------------------------------------------------------------
+type SavingsGoal {
+  id: Int!
+  name: String!
+  type: String!
+  target_amount: Float!
+  current_amount: Float!
+  remaining_amount: Float!
+  progress_percent: Float!
+  deadline: String
+  is_monthly: Boolean!
+  is_completed: Boolean!
+  notes: String
+}
+
+type GoalRef {
+  id: Int!
+  name: String!
+  type: String!
+}
+
+type SavingsTransaction {
+  id: Int!
+  type: String!
+  amount: Float!
+  signed_amount: Float!
+  transaction_date: String!
+  notes: String
+  goal_id: Int
+  goal: GoalRef
+  wallet_id: Int
+  wallet: WalletRef
+  created_at: String
+}
+
+type SavingsTransactionList {
+  range: RangeInfo!
+  transactions: [SavingsTransaction!]!
+}
+
+type Wallet {
+  id: Int!
+  name: String!
+  type: String!
+  opening_balance: Float!
+  balance_as_of: String
+  receives_salary: Boolean!
+  is_default: Boolean!
+  sort_order: Int!
+  balance: Float
+  salary_received: Float
+  spent: Float
+  saved: Float
+}
+
+type SavingsOverview {
+  total_saved: Float!
+  goal_balance: Float!
+  loose_savings: Float!
+  range: RangeInfo!
+  deposits: Float!
+  withdrawals: Float!
+  net: Float!
+  goals: [SavingsGoal!]!
+  transactions: [SavingsTransaction!]!
+  wallets: [Wallet!]!
+}
+
+type MoneyOverview {
+  income: Float!
+  expenses: Float!
+  savings: Float!
+  remaining: Float!
+  total_saved: Float!
+  wallets: [Wallet!]!
+}
+
+# ---------------------------------------------------------------------------
+# Dashboard
+# ---------------------------------------------------------------------------
+type DashboardProfile {
+  name: String!
+  full_name: String!
+  position: String
+  company: String
+}
+
+type DashboardSchedule {
+  start: String!
+  end: String!
+  start_label: String!
+  end_label: String!
+  break_minutes: Int!
+  break_start: String
+  break_end: String
+  expected_minutes: Int!
+}
+
+type DashboardLeave {
+  type: String!
+  notes: String
+}
+
+type DashboardToday {
+  date: String!
+  day_name: String!
+  state: String!
+  is_working_day: Boolean!
+  schedule: DashboardSchedule
+  leave: DashboardLeave
+  attendance: AttendanceRecord
+  worked_minutes: Int!
+  regular_minutes: Int!
+  overtime_minutes: Int!
+  late_minutes: Int!
+  earned: Float
+  is_live: Boolean!
+  expenses: Float!
+}
+
+type NextPayday {
+  date: String!
+  days_until: Int!
+  amount: Float!
+  period_name: String!
+  kind: String!
+}
+
+type Dashboard {
+  server_time: String!
+  timezone: String!
+  profile: DashboardProfile!
+  today: DashboardToday!
+  period: PeriodWithSummary!
+  payday: PeriodWithSummary
+  next_payday: NextPayday!
+  recent_attendance: [AttendanceRecord!]!
+  money: MoneyOverview!
+  salary: SalaryRates!
+  notification: NotificationPlan!
+}
+
+# ---------------------------------------------------------------------------
+# Inputs (validated with the same rules as the REST form requests)
+# ---------------------------------------------------------------------------
+input LoginInput {
+  email: String!
+  password: String!
+  device_name: String
+}
+
+input RegisterInput {
+  name: String!
+  email: String!
+  password: String!
+  device_name: String
+}
+
+input ProfileInput {
+  full_name: String
+  nickname: String
+  position: String
+  company: String
+  employment_type: String
+  timezone: String
+  currency: String
+  late_grace_minutes: Int
+}
+
+input SalarySettingsInput {
+  salary_type: String
+  basic_salary: Float
+  daily_rate: Float
+  hourly_rate: Float
+  weekly_rate: Float
+  biweekly_rate: Float
+  monthly_rate: Float
+  expected_hours_per_day: Float
+  overtime_enabled: Boolean
+  overtime_multiplier: Float
+  overtime_hourly_rate: Float
+  prorate_undertime: Boolean
+  deduct_absences: Boolean
+  period_type: String
+  period_start_day: Int
+  period_second_day: Int
+  period_start_weekday: Int
+  period_anchor_date: String
+  custom_period_days: Int
+  pay_delay_days: Int
+  overtime_threshold_minutes: Int
+}
+
+input WorkScheduleDayInput {
+  day_of_week: Int!
+  is_working_day: Boolean!
+  start_time: String
+  end_time: String
+  break_minutes: Int
+}
+
+input NotificationSettingsInput {
+  work_notification: Boolean
+  work_notification_lead_minutes: Int
+  before_work_reminder: Boolean
+  before_work_minutes: Int
+  still_on_duty_reminder: Boolean
+  still_on_duty_minutes: Int
+  salary_period_reminder: Boolean
+  expense_reminder: Boolean
+  expense_reminder_time: String
+}
+
+input AttendanceActionInput {
+  idempotency_key: String
+  occurred_at: String
+  source: String
+  notes: String
+}
+
+input ManualAttendanceInput {
+  work_date: String
+  time_in: String
+  time_out: String
+  status: String
+  break_minutes: Int
+  notes: String
+}
+
+input LeaveInput {
+  leave_date: String
+  type: String
+  is_paid: Boolean
+  notes: String
+}
+
+input AdjustmentInput {
+  type: String
+  amount: Float
+  description: String
+  adjustment_date: String
+  notes: String
+}
+
+input ExpenseInput {
+  amount: Float
+  expense_date: String
+  expense_category_id: Int
+  description: String
+  payment_method: String
+  wallet_id: Int
+  notes: String
+}
+
+input ExpenseCategoryInput {
+  name: String
+  icon: String
+  color: String
+  sort_order: Int
+}
+
+input GoalInput {
+  name: String
+  type: String
+  target_amount: Float
+  current_amount: Float
+  deadline: String
+  is_monthly: Boolean
+  is_completed: Boolean
+  notes: String
+}
+
+input SavingsTransactionInput {
+  type: String
+  amount: Float
+  transaction_date: String
+  savings_goal_id: Int
+  wallet_id: Int
+  notes: String
+}
+
+input WalletInput {
+  name: String
+  type: String
+  opening_balance: Float
+  balance_as_of: String
+  receives_salary: Boolean
+  is_default: Boolean
+}
+
+input DeviceTokenInput {
+  token: String!
+  platform: String
+  device_name: String
+}
