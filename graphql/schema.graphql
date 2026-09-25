@@ -45,6 +45,11 @@ type Query {
   savings(range: String, from: String, to: String): SavingsOverview! @guard @field(resolver: "App\\GraphQL\\Queries\\ApiQueries@savings")
   savingsTransactions(range: String, from: String, to: String, goal_id: Int): SavingsTransactionList! @guard @field(resolver: "App\\GraphQL\\Queries\\ApiQueries@savingsTransactions")
   wallets: [Wallet!]! @guard @field(resolver: "App\\GraphQL\\Queries\\ApiQueries@wallets")
+
+  "Money owed and money lent. status: active | paid | closed | all"
+  loans(status: String): [Loan!]! @guard @field(resolver: "App\\GraphQL\\Queries\\ApiQueries@loans")
+  loan(id: Int!): Loan! @guard @field(resolver: "App\\GraphQL\\Queries\\ApiQueries@loan")
+  loansOverview(range: String, from: String, to: String): LoanOverview! @guard @field(resolver: "App\\GraphQL\\Queries\\ApiQueries@loansOverview")
 }
 
 # ---------------------------------------------------------------------------
@@ -92,6 +97,13 @@ type Mutation {
   createWallet(input: WalletInput!): Wallet! @guard @field(resolver: "App\\GraphQL\\Mutations\\ApiMutations@createWallet")
   updateWallet(id: Int!, input: WalletInput!): Wallet! @guard @field(resolver: "App\\GraphQL\\Mutations\\ApiMutations@updateWallet")
   deleteWallet(id: Int!): Result! @guard @field(resolver: "App\\GraphQL\\Mutations\\ApiMutations@deleteWallet")
+
+  createLoan(input: LoanInput!): Loan! @guard @field(resolver: "App\\GraphQL\\Mutations\\ApiMutations@createLoan")
+  updateLoan(id: Int!, input: LoanInput!): Loan! @guard @field(resolver: "App\\GraphQL\\Mutations\\ApiMutations@updateLoan")
+  deleteLoan(id: Int!): Result! @guard @field(resolver: "App\\GraphQL\\Mutations\\ApiMutations@deleteLoan")
+  createLoanPayment(loan_id: Int!, input: LoanPaymentInput!): LoanPayment! @guard @field(resolver: "App\\GraphQL\\Mutations\\ApiMutations@createLoanPayment")
+  updateLoanPayment(id: Int!, input: LoanPaymentInput!): LoanPayment! @guard @field(resolver: "App\\GraphQL\\Mutations\\ApiMutations@updateLoanPayment")
+  deleteLoanPayment(id: Int!): Result! @guard @field(resolver: "App\\GraphQL\\Mutations\\ApiMutations@deleteLoanPayment")
 
   registerDeviceToken(input: DeviceTokenInput!): DeviceToken! @guard @field(resolver: "App\\GraphQL\\Mutations\\ApiMutations@registerDeviceToken")
   deleteDeviceToken(id: Int!): Result! @guard @field(resolver: "App\\GraphQL\\Mutations\\ApiMutations@deleteDeviceToken")
@@ -368,6 +380,9 @@ type PeriodComputation {
   take_home: Float!
   expenses: Float!
   savings: Float!
+  loan_deductions: Float!
+  loan_payments: Float!
+  loan_received: Float!
   remaining: Float!
   progress: Float!
   days: [PeriodDay!]!
@@ -387,6 +402,9 @@ type PeriodSummary {
   total_income: Float!
   expenses: Float!
   savings: Float!
+  loan_deductions: Float!
+  loan_payments: Float!
+  loan_received: Float!
   remaining: Float!
   days_worked: Int!
   days_absent: Int!
@@ -629,6 +647,94 @@ type Wallet {
   salary_received: Float
   spent: Float
   saved: Float
+  loans: Float
+}
+
+type LoanRef {
+  id: Int!
+  name: String!
+  type: String!
+}
+
+type LoanPayment {
+  id: Int!
+  loan_id: Int!
+  loan: LoanRef
+  amount: Float!
+  payment_date: String!
+  wallet_id: Int
+  wallet: WalletRef
+  via_payroll: Boolean!
+  notes: String
+  created_at: String
+}
+
+type Loan {
+  id: Int!
+  name: String!
+  lender: String
+  "borrowed (I owe) | lent (someone owes me)"
+  type: String!
+  principal_amount: Float!
+  total_amount: Float!
+  opening_paid_amount: Float!
+  installment_amount: Float
+  "per_cutoff | monthly | weekly | none"
+  frequency: String!
+  start_date: String!
+  due_date: String
+  next_due_date: String
+  wallet_id: Int
+  wallet: WalletRef
+  via_payroll: Boolean!
+  is_closed: Boolean!
+  notes: String
+  paid_amount: Float!
+  remaining_amount: Float!
+  progress_percent: Float!
+  is_paid: Boolean!
+  "active | paid | closed"
+  status: String!
+  is_overdue: Boolean!
+  payments_count: Int
+  payments: [LoanPayment!]
+}
+
+type LoanNextDue {
+  loan_id: Int!
+  name: String!
+  type: String!
+  amount: Float!
+  due_date: String!
+  is_overdue: Boolean!
+}
+
+type LoanTotals {
+  owed: Float!
+  receivable: Float!
+  active_count: Int!
+  overdue_count: Int!
+  next_due: LoanNextDue
+  paid_this_period: Float
+  received_this_period: Float
+}
+
+type LoanPeriodSums {
+  paid: Float!
+  payroll: Float!
+  received: Float!
+}
+
+type LoanOverview {
+  owed: Float!
+  receivable: Float!
+  active_count: Int!
+  overdue_count: Int!
+  next_due: LoanNextDue
+  range: DateRange!
+  period: LoanPeriodSums!
+  loans: [Loan!]!
+  payments: [LoanPayment!]!
 }
 
 type SavingsOverview {
@@ -651,6 +757,7 @@ type MoneyOverview {
   remaining: Float!
   total_saved: Float!
   wallets: [Wallet!]!
+  loans: LoanTotals!
 }
 
 # ---------------------------------------------------------------------------
@@ -864,6 +971,32 @@ input WalletInput {
   balance_as_of: String
   receives_salary: Boolean
   is_default: Boolean
+}
+
+input LoanInput {
+  name: String
+  lender: String
+  type: String
+  principal_amount: Float
+  total_amount: Float
+  opening_paid_amount: Float
+  installment_amount: Float
+  frequency: String
+  start_date: String
+  due_date: String
+  next_due_date: String
+  wallet_id: Int
+  via_payroll: Boolean
+  is_closed: Boolean
+  notes: String
+}
+
+input LoanPaymentInput {
+  amount: Float
+  payment_date: String
+  wallet_id: Int
+  via_payroll: Boolean
+  notes: String
 }
 
 input DeviceTokenInput {
