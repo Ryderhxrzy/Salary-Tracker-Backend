@@ -54,6 +54,12 @@ class WalletService
         $this->ensureDefaults($user);
         $data['balance_as_of'] = $data['balance_as_of'] ?? CarbonImmutable::now($user->timezone())->toDateString();
         $data['type'] = $data['type'] ?? 'other';
+        $data['category'] = $data['category'] ?? match ($data['type']) {
+            'cash' => 'cash',
+            'gcash', 'maya' => 'ewallet',
+            'bank', 'card' => 'bank',
+            default => 'other',
+        };
         $data['sort_order'] = ((int) $user->wallets()->max('sort_order')) + 1;
         $wallet = $user->wallets()->create($data);
         $this->applyFlags($user, $wallet, $data);
