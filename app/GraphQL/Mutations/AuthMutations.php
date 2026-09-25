@@ -10,7 +10,6 @@ use App\Models\User;
 use App\Services\ExpenseService;
 use App\Services\NotificationService;
 use App\Services\SalaryService;
-use App\Services\WalletService;
 use App\Services\WorkScheduleService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
@@ -27,7 +26,6 @@ class AuthMutations
         protected SalaryService $salary,
         protected ExpenseService $expenses,
         protected NotificationService $notifications,
-        protected WalletService $wallets,
     ) {}
 
     public function login($root, array $args): array
@@ -85,6 +83,5 @@ class AuthMutations
         $this->notifications->settings($user);
         $this->schedules->ensureDefaults($user);
         $this->expenses->ensureDefaultCategories($user);
-        $this->wallets->ensureDefaults($user);
     }
 }
