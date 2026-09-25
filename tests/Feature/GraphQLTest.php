@@ -29,7 +29,7 @@ class GraphQLTest extends TestCase
         // Unauthenticated queries are refused, the token unlocks them.
         $this->graphQL('{ me { id } }')->assertGraphQLErrorMessage('Unauthenticated.');
         $this->withHeader('Authorization', "Bearer {$token}")
-            ->graphQL('{ me { id email } wallets { name type receives_salary } }')
+            ->graphQL('{ me { id email } wallets { name type receives_salary institution_id } }')
             ->assertJsonPath('data.me.id', $user->id)
             ->assertJsonPath('data.wallets.0.name', 'Cash')
             ->assertJsonPath('data.wallets.1.institution_id', 'gcash');
