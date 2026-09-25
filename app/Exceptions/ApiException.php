@@ -3,11 +3,14 @@
 namespace App\Exceptions;
 
 use Exception;
+use GraphQL\Error\ClientAware;
+use GraphQL\Error\ProvidesExtensions;
 
 /**
  * A domain error that should be rendered as a JSON API error response.
+ * In GraphQL it is client safe and exposes { code, status, errors } as extensions.
  */
-class ApiException extends Exception
+class ApiException extends Exception implements ClientAware, ProvidesExtensions
 {
     public function __construct(
         string $message,
@@ -46,5 +49,19 @@ class ApiException extends Exception
     public function errorCode(): ?string
     {
         return $this->errorCode;
+    }
+
+    public function isClientSafe(): bool
+    {
+        return true;
+    }
+
+    public function getExtensions(): array
+    {
+        return array_filter([
+            'code' => $this->errorCode,
+            'status' => $this->status,
+            'errors' => $this->errors ?: null,
+        ], fn ($v) => $v !== null);
     }
 }
