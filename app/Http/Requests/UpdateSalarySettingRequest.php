@@ -31,6 +31,7 @@ class UpdateSalarySettingRequest extends ApiFormRequest
             'period_start_weekday' => ['nullable', 'integer', 'min:0', 'max:6'],
             'period_anchor_date' => ['nullable', 'date_format:Y-m-d'],
             'custom_period_days' => ['nullable', 'integer', 'min:1', 'max:90'],
+            'pay_delay_days' => ['nullable', 'integer', 'min:0', 'max:31'],
         ];
     }
 
