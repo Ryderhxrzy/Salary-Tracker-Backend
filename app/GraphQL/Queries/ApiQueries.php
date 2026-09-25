@@ -267,7 +267,7 @@ class ApiQueries
 
     public function goals($root, array $args, GraphQLContext $context): array
     {
-        $goals = $this->user($context)->savingsGoals()->orderBy('is_completed')->orderByDesc('id')->get();
+        $goals = $this->user($context)->savingsGoals()->with('wallet')->orderBy('is_completed')->orderByDesc('id')->get();
 
         return $this->normalize(SavingsGoalResource::collection($goals));
     }
@@ -342,7 +342,6 @@ class ApiQueries
         return $this->normalize([
             'range' => $range,
             'total' => Money::sum($items->pluck('amount')),
-            'fees' => Money::sum($items->pluck('fee')),
             'transfers' => WalletTransferResource::collection($items),
         ]);
     }
