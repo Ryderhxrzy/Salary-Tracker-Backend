@@ -32,6 +32,7 @@ class WalletResource extends JsonResource
             'spent' => $this->when(isset($this->spent), fn () => (float) $this->spent),
             'saved' => $this->when(isset($this->saved), fn () => (float) $this->saved),
             'loans' => $this->when(isset($this->loans), fn () => (float) $this->loans),
+            'other_income' => $this->when(isset($this->other_income), fn () => (float) $this->other_income),
         ];
     }
 }
