@@ -11,7 +11,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'expected_hours_per_day', 'overtime_enabled', 'overtime_multiplier', 'overtime_hourly_rate',
     'prorate_undertime', 'deduct_absences',
     'period_type', 'period_start_day', 'period_second_day', 'period_start_weekday', 'period_anchor_date', 'custom_period_days',
-    'pay_delay_days',
+    'pay_delay_days', 'overtime_threshold_minutes',
 ])]
 class SalarySetting extends Model
 {
@@ -39,6 +39,7 @@ class SalarySetting extends Model
             'period_anchor_date' => 'date',
             'custom_period_days' => 'integer',
             'pay_delay_days' => 'integer',
+            'overtime_threshold_minutes' => 'integer',
         ];
     }
 
