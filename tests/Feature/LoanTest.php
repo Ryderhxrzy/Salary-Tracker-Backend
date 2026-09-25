@@ -16,7 +16,8 @@ class LoanTest extends TestCase
         $this->actingAsTracker(true, ['salary_type' => 'per_period', 'basic_salary' => 10000]);
         $this->travelTo($this->manila('2026-09-22 12:00'));
 
-        $cash = $this->postJson('/api/wallets', ['name' => 'Cash', 'type' => 'cash', 'category' => 'cash', 'institution_id' => 'cash', 'is_default' => true, 'opening_balance' => 5000, 'balance_as_of' => '2026-09-01'])->assertCreated()->json('data');
+        $cash = $this->getJson('/api/wallets')->assertOk()->json('data.0');
+        $this->putJson("/api/wallets/{$cash['id']}", ['opening_balance' => 5000, 'balance_as_of' => '2026-09-01'])->assertOk();
 
         // SSS salary loan: ₱20,000 to repay, ₱1,000 per cut-off taken from the payslip.
         $sss = $this->postJson('/api/loans', [
