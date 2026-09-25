@@ -21,8 +21,11 @@ class SavingsService
 {
     public function __construct(protected WalletService $wallets) {}
 
-    public function overview(User $user, string $from, string $to): array
+    /** @param  array{from: string, to: string, label?: string}  $range */
+    public function overview(User $user, array $range): array
     {
+        $from = $range['from'];
+        $to = $range['to'];
         $goals = $user->savingsGoals()->orderBy('is_completed')->orderByDesc('id')->get();
         $goalBalance = Money::sum($goals->where('type', '!=', 'spending_limit')->pluck('current_amount'));
         $loose = $this->netBetween($user, null, null, withoutGoal: true);
@@ -36,7 +39,7 @@ class SavingsService
             'total_saved' => Money::round($goalBalance + $loose),
             'goal_balance' => $goalBalance,
             'loose_savings' => Money::round($loose),
-            'range' => ['from' => $from, 'to' => $to],
+            'range' => ['from' => $from, 'to' => $to, 'label' => $range['label'] ?? "{$from} to {$to}"],
             'deposits' => Money::round($deposits),
             'withdrawals' => Money::round($withdrawals),
             'net' => Money::round($deposits - $withdrawals),
