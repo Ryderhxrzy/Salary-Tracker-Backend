@@ -278,10 +278,12 @@ class SalaryPeriodService
                     $counts['days_late']++;
                 }
                 if ($record->time_out) {
+                    // Hours short of a full day are deducted at the hourly rate (daily ÷ expected hours).
                     $expected = $schedule->expectedWorkMinutes();
-                    $undertimeMinutes += max(0, $expected - (int) $record->regular_minutes);
-                    if ($configured) {
-                        $undertimeDeduction += max(0.0, $daily - (float) ($record->regular_amount ?? 0));
+                    $short = max(0, $expected - (int) $record->regular_minutes);
+                    $undertimeMinutes += $short;
+                    if ($configured && $expected > 0) {
+                        $undertimeDeduction += $daily * $short / $expected;
                     }
                 }
 

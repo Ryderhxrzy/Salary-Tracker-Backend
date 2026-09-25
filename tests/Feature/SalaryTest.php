@@ -226,11 +226,12 @@ class SalaryTest extends TestCase
         $this->assertSame(1902, $s['overtime_minutes']);
         $this->assertEqualsWithDelta(10000, $s['basic_salary'], 0.001);
         $this->assertEqualsWithDelta(1538.46, $s['absence_deduction'], 0.01);
-        $this->assertEqualsWithDelta(384.61, $s['undertime_deduction'], 0.02);
+        $this->assertEqualsWithDelta(384.62, $s['undertime_deduction'], 0.005);
         $this->assertEqualsWithDelta(3810.02, $s['overtime_pay'], 0.01);
-        // 10,000 - 1,538.46 - 384.61 + 3,810.02
-        $this->assertEqualsWithDelta(11886.95, $s['salary'], 0.02);
-        $this->assertEqualsWithDelta(11117.71, $s['earned_to_date'], 0.01);
+        // 10,000 - 1,538.46 - 384.62 + 3,810.02
+        $this->assertEqualsWithDelta(11886.94, $s['salary'], 0.005);
+        // What the completed days earned so far: 9 full days + half day + overtime.
+        $this->assertEqualsWithDelta(11117.71, $s['earned_to_date'], 0.005);
     }
 
     public function test_past_working_days_without_records_count_as_absent(): void

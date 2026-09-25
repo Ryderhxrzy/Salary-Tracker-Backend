@@ -205,10 +205,14 @@ class SalaryService
             $overtime = ($this->overtimeHourlyRate($user, $settings) ?? 0.0) * ($record->overtime_minutes / 60);
         }
 
+        // Round the parts first so "daily pay + overtime pay" always equals the total shown.
+        $regularAmount = Money::round($regular);
+        $overtimeAmount = Money::round($overtime);
+
         return [
-            'regular_amount' => Money::round($regular),
-            'overtime_amount' => Money::round($overtime),
-            'salary_amount' => Money::round($regular + $overtime),
+            'regular_amount' => $regularAmount,
+            'overtime_amount' => $overtimeAmount,
+            'salary_amount' => Money::round($regularAmount + $overtimeAmount),
         ];
     }
 
