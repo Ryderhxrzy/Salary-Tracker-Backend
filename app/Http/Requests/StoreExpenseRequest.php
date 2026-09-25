@@ -21,6 +21,10 @@ class StoreExpenseRequest extends ApiFormRequest
             'description' => ['nullable', 'string', 'max:255'],
             'expense_date' => [$required, 'date_format:Y-m-d'],
             'payment_method' => ['nullable', Rule::in(Expense::PAYMENT_METHODS)],
+            'wallet_id' => [
+                'nullable', 'integer',
+                Rule::exists('wallets', 'id')->where('user_id', $this->user()->id)->whereNull('deleted_at'),
+            ],
             'notes' => ['nullable', 'string', 'max:1000'],
         ];
     }
