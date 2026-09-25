@@ -12,18 +12,21 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * A place where money sits: cash on hand, GCash, Maya, a card or a bank account.
  * Balances are computed (opening balance + salary received − expenses − savings).
  */
-#[Fillable(['name', 'type', 'opening_balance', 'balance_as_of', 'receives_salary', 'is_default', 'sort_order'])]
+#[Fillable(['name', 'type', 'category', 'institution_id', 'account_type', 'last4', 'holder_name', 'color', 'opening_balance', 'balance_as_of', 'receives_salary', 'is_default', 'sort_order'])]
 class Wallet extends Model
 {
     use SoftDeletes;
 
     public const TYPES = ['cash', 'gcash', 'maya', 'card', 'bank', 'other'];
 
+    public const CATEGORIES = ['bank', 'ewallet', 'cash', 'other'];
+
+    public const ACCOUNT_TYPES = ['savings', 'checking', 'payroll', 'debit', 'credit', 'ewallet', 'virtual_card', 'other'];
+
     /** Wallets created for every user: the salary is paid in cash by default. */
     public const DEFAULTS = [
-        ['name' => 'Cash', 'type' => 'cash', 'receives_salary' => true, 'is_default' => true],
-        ['name' => 'GCash', 'type' => 'gcash', 'receives_salary' => false, 'is_default' => false],
-        ['name' => 'Bank', 'type' => 'bank', 'receives_salary' => false, 'is_default' => false],
+        ['name' => 'Cash', 'type' => 'cash', 'category' => 'cash', 'institution_id' => 'cash', 'receives_salary' => true, 'is_default' => true],
+        ['name' => 'GCash', 'type' => 'gcash', 'category' => 'ewallet', 'institution_id' => 'gcash', 'account_type' => 'ewallet', 'receives_salary' => false, 'is_default' => false],
     ];
 
     protected function casts(): array
