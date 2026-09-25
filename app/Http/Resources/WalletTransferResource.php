@@ -20,7 +20,6 @@ class WalletTransferResource extends JsonResource
             'from_wallet' => $this->whenLoaded('fromWallet', fn () => $ref($this->fromWallet)),
             'to_wallet' => $this->whenLoaded('toWallet', fn () => $ref($this->toWallet)),
             'amount' => (float) $this->amount,
-            'fee' => (float) $this->fee,
             'transfer_date' => $this->transfer_date?->toDateString(),
             'notes' => $this->notes,
             'created_at' => $this->created_at?->toIso8601String(),
