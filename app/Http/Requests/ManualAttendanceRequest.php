@@ -7,10 +7,15 @@ use Illuminate\Validation\Rule;
 
 class ManualAttendanceRequest extends ApiFormRequest
 {
+    public const FIELDS = ['work_date', 'time_in', 'time_out', 'status', 'break_minutes', 'notes'];
+
     public function rules(): array
     {
-        $isUpdate = $this->route('attendance') !== null;
+        return static::rulesFor($this->route('attendance') !== null);
+    }
 
+    public static function rulesFor(bool $isUpdate = false): array
+    {
         return [
             'work_date' => [$isUpdate ? 'nullable' : 'required', 'date_format:Y-m-d'],
             'time_in' => ['nullable', 'string', 'max:40'],
@@ -23,6 +28,6 @@ class ManualAttendanceRequest extends ApiFormRequest
 
     public function attendanceData(): array
     {
-        return $this->only(['work_date', 'time_in', 'time_out', 'status', 'break_minutes', 'notes']);
+        return $this->only(self::FIELDS);
     }
 }
