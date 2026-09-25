@@ -8,6 +8,7 @@ use App\Http\Resources\AttendanceRecordResource;
 use App\Http\Resources\ExpenseCategoryResource;
 use App\Http\Resources\ExpenseResource;
 use App\Http\Resources\LeaveRecordResource;
+use App\Http\Resources\LoanResource;
 use App\Http\Resources\NotificationSettingResource;
 use App\Http\Resources\ProfileResource;
 use App\Http\Resources\SalaryAdjustmentResource;
@@ -22,6 +23,7 @@ use App\Models\SalaryPeriod;
 use App\Services\AttendanceService;
 use App\Services\DashboardService;
 use App\Services\ExpenseService;
+use App\Services\LoanService;
 use App\Services\NotificationService;
 use App\Services\SalaryPeriodService;
 use App\Services\SalaryService;
@@ -48,6 +50,7 @@ class ApiQueries
         protected ExpenseService $expenses,
         protected SavingsService $savings,
         protected WalletService $wallets,
+        protected LoanService $loans,
     ) {}
 
     public function me($root, array $args, GraphQLContext $context): array
@@ -285,6 +288,26 @@ class ApiQueries
     public function wallets($root, array $args, GraphQLContext $context): array
     {
         return $this->normalize(WalletResource::collection($this->wallets->withBalances($this->user($context))));
+    }
+
+    public function loans($root, array $args, GraphQLContext $context): array
+    {
+        return $this->normalize(LoanResource::collection($this->loans->list($this->user($context), $args['status'] ?? 'all')));
+    }
+
+    public function loan($root, array $args, GraphQLContext $context): array
+    {
+        $loan = $this->loans->find($this->user($context), (int) $args['id']) ?? throw ApiException::notFound();
+
+        return $this->normalize(new LoanResource($loan));
+    }
+
+    public function loansOverview($root, array $args, GraphQLContext $context): array
+    {
+        $user = $this->user($context);
+        $range = $this->resolveRange($user, $args);
+
+        return $this->normalize($this->loans->overview($user, $range['from'], $range['to']));
     }
 
     /** ?range=today|week|month|period|custom&from&to, validated like RangeRequest. */
