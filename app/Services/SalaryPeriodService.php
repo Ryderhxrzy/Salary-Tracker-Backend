@@ -314,10 +314,16 @@ class SalaryPeriodService
             // Today without a record and future days: still expected to be worked.
         }
 
+        // A finished period with no attendance, leave or adjustment at all was simply not tracked
+        // (e.g. before the app was used): it gets no salary instead of a full set of absences.
+        $tracked = $records->isNotEmpty() || $leaves->isNotEmpty() || $adjustments->isNotEmpty()
+            || in_array($status, [self::STATUS_ONGOING, self::STATUS_UPCOMING], true);
+
         $overtimePay = Money::sum($records->pluck('overtime_amount'));
         $basic = $configured ? $this->salary->basicForPeriod($user, $counts['working_days'], $settings) : null;
-        $salary = $configured
-            ? Money::round(($basic ?? 0.0) - $absenceDeduction - $undertimeDeduction + $overtimePay + $restDayPay)
+        // Deductions can never take the basic pay below zero; overtime is always added on top.
+        $salary = $configured && $tracked
+            ? Money::round(max(0.0, ($basic ?? 0.0) - $absenceDeduction - $undertimeDeduction) + $overtimePay + $restDayPay)
             : null;
 
         $income = Money::sum($adjustments->filter(fn (SalaryAdjustment $a) => $a->isIncome())->pluck('amount'));
@@ -334,6 +340,7 @@ class SalaryPeriodService
             'status' => $status,
             'days_until_pay' => $daysUntilPay,
             'is_current' => $status === self::STATUS_ONGOING,
+            'tracked' => $tracked,
             'salary_configured' => $configured,
             'basic_salary' => $basic,
             'daily_rate' => $configured ? Money::round($daily) : null,

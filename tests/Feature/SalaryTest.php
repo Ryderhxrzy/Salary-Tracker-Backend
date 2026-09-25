@@ -269,6 +269,22 @@ class SalaryTest extends TestCase
         $this->assertEqualsWithDelta(10000 - 3 * 769.23, $s['salary'], 0.02);
     }
 
+    public function test_finished_periods_without_any_attendance_are_not_charged_with_absences(): void
+    {
+        $this->actingAsTracker(true, ['salary_type' => 'per_period', 'basic_salary' => 10000]);
+        $this->postJson('/api/attendance/manual', ['work_date' => '2026-09-11', 'time_in' => '08:00', 'time_out' => '17:00'])->assertCreated();
+        $this->travelTo($this->manila('2026-09-12 12:00'));
+
+        $periods = $this->getJson('/api/salary/periods?count=2')->assertOk()->json('data');
+        // Current period: tracked, expected salary computed as usual.
+        $this->assertTrue($periods[0]['summary']['tracked']);
+        $this->assertEqualsWithDelta(10000, $periods[0]['summary']['salary'], 0.001);
+        // Aug 26 - Sep 10 has no record at all: not tracked, no salary, no fake absences charged.
+        $this->assertFalse($periods[1]['summary']['tracked']);
+        $this->assertNull($periods[1]['summary']['salary']);
+        $this->assertSame('completed', $periods[1]['summary']['status'], 'ended Sep 10, paid Sep 15');
+    }
+
     public function test_period_moves_from_ongoing_to_completed_to_paid_and_stays_in_history(): void
     {
         $this->actingAsTracker(true, ['salary_type' => 'per_period', 'basic_salary' => 10000]);
