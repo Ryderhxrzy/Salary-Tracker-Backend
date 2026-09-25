@@ -10,6 +10,8 @@ use App\Http\Requests\StoreDeviceTokenRequest;
 use App\Http\Requests\StoreExpenseCategoryRequest;
 use App\Http\Requests\StoreExpenseRequest;
 use App\Http\Requests\StoreLeaveRecordRequest;
+use App\Http\Requests\StoreLoanPaymentRequest;
+use App\Http\Requests\StoreLoanRequest;
 use App\Http\Requests\StoreSalaryAdjustmentRequest;
 use App\Http\Requests\StoreSavingsGoalRequest;
 use App\Http\Requests\StoreSavingsTransactionRequest;
@@ -23,6 +25,8 @@ use App\Http\Resources\DeviceTokenResource;
 use App\Http\Resources\ExpenseCategoryResource;
 use App\Http\Resources\ExpenseResource;
 use App\Http\Resources\LeaveRecordResource;
+use App\Http\Resources\LoanPaymentResource;
+use App\Http\Resources\LoanResource;
 use App\Http\Resources\NotificationSettingResource;
 use App\Http\Resources\ProfileResource;
 use App\Http\Resources\SalaryAdjustmentResource;
@@ -36,6 +40,8 @@ use App\Models\DeviceToken;
 use App\Models\Expense;
 use App\Models\ExpenseCategory;
 use App\Models\LeaveRecord;
+use App\Models\Loan;
+use App\Models\LoanPayment;
 use App\Models\SalaryAdjustment;
 use App\Models\SavingsGoal;
 use App\Models\SavingsTransaction;
@@ -43,6 +49,7 @@ use App\Models\User;
 use App\Models\Wallet;
 use App\Services\AttendanceService;
 use App\Services\ExpenseService;
+use App\Services\LoanService;
 use App\Services\NotificationService;
 use App\Services\SalaryService;
 use App\Services\SavingsService;
@@ -65,6 +72,7 @@ class ApiMutations
         protected ExpenseService $expenses,
         protected SavingsService $savings,
         protected WalletService $wallets,
+        protected LoanService $loans,
     ) {}
 
     // ------------------------------------------------------------------ profile / settings
@@ -419,6 +427,66 @@ class ApiMutations
         $this->wallets->delete($user, $wallet);
 
         return $this->ok('Wallet deleted.');
+    }
+
+    // ------------------------------------------------------------------ loans
+
+    public function createLoan($root, array $args, GraphQLContext $context): array
+    {
+        $user = $this->user($context);
+
+        return $this->normalize(new LoanResource($this->loans->create($user, $this->validate($args['input'], StoreLoanRequest::rulesFor($user, false)))));
+    }
+
+    public function updateLoan($root, array $args, GraphQLContext $context): array
+    {
+        $user = $this->user($context);
+        /** @var Loan $loan */
+        $loan = $this->owned($user, 'loans', (int) $args['id']);
+        $this->authorize('update', $loan);
+
+        return $this->normalize(new LoanResource($this->loans->update($user, $loan, $this->validate($args['input'], StoreLoanRequest::rulesFor($user, true)))));
+    }
+
+    public function deleteLoan($root, array $args, GraphQLContext $context): array
+    {
+        /** @var Loan $loan */
+        $loan = $this->owned($this->user($context), 'loans', (int) $args['id']);
+        $this->authorize('delete', $loan);
+        $this->loans->delete($loan);
+
+        return $this->ok('Loan deleted.');
+    }
+
+    public function createLoanPayment($root, array $args, GraphQLContext $context): array
+    {
+        $user = $this->user($context);
+        /** @var Loan $loan */
+        $loan = $this->owned($user, 'loans', (int) $args['loan_id']);
+        $this->authorize('update', $loan);
+        $payment = $this->loans->addPayment($user, $loan, $this->validate($args['input'], StoreLoanPaymentRequest::rulesFor($user, false)));
+
+        return $this->normalize(new LoanPaymentResource($payment));
+    }
+
+    public function updateLoanPayment($root, array $args, GraphQLContext $context): array
+    {
+        $user = $this->user($context);
+        /** @var LoanPayment $payment */
+        $payment = $this->owned($user, 'loanPayments', (int) $args['id']);
+        $this->authorize('update', $payment);
+
+        return $this->normalize(new LoanPaymentResource($this->loans->updatePayment($payment, $this->validate($args['input'], StoreLoanPaymentRequest::rulesFor($user, true)))));
+    }
+
+    public function deleteLoanPayment($root, array $args, GraphQLContext $context): array
+    {
+        /** @var LoanPayment $payment */
+        $payment = $this->owned($this->user($context), 'loanPayments', (int) $args['id']);
+        $this->authorize('delete', $payment);
+        $this->loans->deletePayment($payment);
+
+        return $this->ok('Payment removed.');
     }
 
     // ------------------------------------------------------------------ devices
