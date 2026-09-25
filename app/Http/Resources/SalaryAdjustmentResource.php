@@ -19,6 +19,8 @@ class SalaryAdjustmentResource extends JsonResource
             'signed_amount' => $this->signedAmount(),
             'description' => $this->description,
             'adjustment_date' => $this->adjustment_date?->toDateString(),
+            'recurring' => (bool) $this->recurring,
+            'recurring_until' => $this->recurring_until?->toDateString(),
             'notes' => $this->notes,
         ];
     }
