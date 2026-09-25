@@ -30,8 +30,9 @@ class SalaryTrackerSeeder extends Seeder
         $user->profile()->firstOrCreate([], ['full_name' => $name, 'nickname' => $name, 'timezone' => 'Asia/Manila']);
 
         app(SalaryService::class)->settings($user)->fill([
-            'salary_type' => 'daily',
-            'daily_rate' => 769.23,
+            // ₱10,000 basic every cut-off => ₱769.23 / day (20,000 a month over 26 working days)
+            'salary_type' => 'per_period',
+            'basic_salary' => 10000,
             'expected_hours_per_day' => 8,
             'overtime_enabled' => true,
             'overtime_multiplier' => 1.25,

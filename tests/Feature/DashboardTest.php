@@ -28,6 +28,9 @@ class DashboardTest extends TestCase
             ->assertJsonPath('data.notification.enabled', true)
             ->assertJsonPath('data.notification.current.state', 'SCHEDULED')
             ->assertJsonPath('data.notification.current.scheduled_start', '2026-09-25T08:00:00+08:00')
+            ->assertJsonPath('data.notification.current.break_start', '2026-09-25T12:00:00+08:00')
+            ->assertJsonPath('data.notification.current.break_end', '2026-09-25T13:00:00+08:00')
+            ->assertJsonPath('data.today.schedule.break_start', '2026-09-25T12:00:00+08:00')
             ->assertJsonPath('data.notification.current.show_at', '2026-09-25T07:00:00+08:00');
 
         $upcoming = collect($response->json('data.notification.upcoming'));
@@ -53,7 +56,8 @@ class DashboardTest extends TestCase
             ->assertJsonPath('data.today.is_live', true)
             ->assertJsonPath('data.today.worked_minutes', 240) // 8:00-12:00, lunch (12:00-1:00) not reached yet
             ->assertJsonPath('data.today.earned', null)
-            ->assertJsonPath('data.period.summary.salary_earned', 0);
+            ->assertJsonPath('data.period.summary.earned_to_date', 0)
+            ->assertJsonPath('data.period.summary.days_absent', 1); // Saturday Sep 26 had no record
 
         $this->travelTo($this->manila('2026-09-28 17:00'));
         $this->postJson('/api/attendance/time-out')->assertOk();
@@ -61,7 +65,43 @@ class DashboardTest extends TestCase
         $this->getJson('/api/dashboard')->assertOk()
             ->assertJsonPath('data.today.state', 'COMPLETED')
             ->assertJsonPath('data.today.earned', 769.23)
-            ->assertJsonPath('data.period.summary.salary_earned', 769.23);
+            ->assertJsonPath('data.period.summary.earned_to_date', 769.23)
+            ->assertJsonPath('data.recent_attendance.0.work_date', '2026-09-28');
+    }
+
+    public function test_full_day_flow_excludes_the_lunch_break_from_live_hours(): void
+    {
+        $this->actingAsTracker(true, ['salary_type' => 'per_period', 'basic_salary' => 10000]);
+        $this->travelTo($this->manila('2026-09-25 08:00'));
+        $this->postJson('/api/attendance/time-in')->assertOk()->assertJsonPath('data.state', 'ON_DUTY');
+
+        $checks = [
+            '11:59' => 239, // still before lunch
+            '12:30' => 240, // paused during lunch
+            '13:30' => 270, // resumed at 1:00 PM
+            '16:59' => 479,
+        ];
+        foreach ($checks as $time => $minutes) {
+            $this->travelTo($this->manila("2026-09-25 {$time}"));
+            $this->getJson('/api/dashboard')->assertOk()
+                ->assertJsonPath('data.today.state', 'ON_DUTY')
+                ->assertJsonPath('data.today.is_live', true)
+                ->assertJsonPath('data.today.worked_minutes', $minutes, "worked minutes at {$time}")
+                ->assertJsonPath('data.today.earned', null);
+        }
+
+        $this->travelTo($this->manila('2026-09-25 17:00'));
+        $this->postJson('/api/attendance/time-out')->assertOk()
+            ->assertJsonPath('data.attendance.worked_minutes', 480)
+            ->assertJsonPath('data.attendance.overtime_minutes', 0)
+            ->assertJsonPath('data.attendance.salary_amount', 769.23)
+            ->assertJsonPath('data.notification.current.state', 'COMPLETED');
+
+        $this->getJson('/api/dashboard')->assertOk()
+            ->assertJsonPath('data.today.state', 'COMPLETED')
+            ->assertJsonPath('data.today.worked_minutes', 480)
+            ->assertJsonPath('data.today.earned', 769.23)
+            ->assertJsonPath('data.period.summary.days_worked', 1);
     }
 
     public function test_work_schedule_can_be_changed_and_drives_notifications(): void
