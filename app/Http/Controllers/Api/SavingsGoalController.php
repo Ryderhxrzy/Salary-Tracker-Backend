@@ -13,7 +13,7 @@ class SavingsGoalController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
-        $goals = $request->user()->savingsGoals()->orderBy('is_completed')->orderByDesc('id')->get();
+        $goals = $request->user()->savingsGoals()->with('wallet')->orderBy('is_completed')->orderByDesc('id')->get();
 
         return $this->ok(SavingsGoalResource::collection($goals));
     }
