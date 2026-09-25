@@ -18,6 +18,7 @@ use App\Http\Controllers\Api\SavingsController;
 use App\Http\Controllers\Api\SavingsGoalController;
 use App\Http\Controllers\Api\StatisticsController;
 use App\Http\Controllers\Api\WalletController;
+use App\Http\Controllers\Api\WalletTransferController;
 use App\Http\Controllers\Api\WorkScheduleController;
 use Illuminate\Support\Facades\Route;
 
@@ -86,6 +87,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::put('savings/transactions/{transaction}', [SavingsController::class, 'update'])->whereNumber('transaction');
     Route::delete('savings/transactions/{transaction}', [SavingsController::class, 'destroy'])->whereNumber('transaction');
     Route::apiResource('wallets', WalletController::class)->only(['index', 'store', 'update', 'destroy']);
+    // Money moved from one wallet to another (cash-in, cash-out, bank withdrawal…).
+    Route::apiResource('wallet-transfers', WalletTransferController::class)->only(['index', 'store', 'update', 'destroy'])->parameters(['wallet-transfers' => 'transfer']);
 
     // Loans: money owed (SSS, Pag-IBIG, company, personal) and money lent, with their payments.
     // Other income (side hustle, freelance…), not part of the salary.
