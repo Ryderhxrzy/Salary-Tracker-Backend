@@ -118,6 +118,11 @@ class User extends Authenticatable
         return $this->hasMany(WalletTransfer::class);
     }
 
+    public function salaryReceipts(): HasMany
+    {
+        return $this->hasMany(SalaryReceipt::class);
+    }
+
     public function deviceTokens(): HasMany
     {
         return $this->hasMany(DeviceToken::class);
