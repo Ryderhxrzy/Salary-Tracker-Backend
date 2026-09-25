@@ -263,10 +263,11 @@ class SalaryPeriodService
             ->keyBy(fn (LeaveRecord $leave) => $leave->leave_date->toDateString());
         $records = $user->attendanceRecords()->betweenDates($from, $to)->get()
             ->keyBy(fn (AttendanceRecord $record) => $record->work_date->toDateString());
-        $adjustments = $user->salaryAdjustments()->whereBetween('adjustment_date', [$from, $to])->get();
+        $adjustments = $user->salaryAdjustments()->forPeriod($from, $to)->get();
         $expenses = (float) $user->expenses()->whereBetween('expense_date', [$from, $to])->sum('amount');
         $savings = $this->savingsBetween($user, $from, $to);
         $loans = $this->loansBetween($user, $from, $to);
+        $otherIncome = (float) $user->incomes()->whereBetween('income_date', [$from, $to])->sum('amount');
 
         $daily = $configured ? ($this->salary->dailyRate($user, $settings) ?? 0.0) : 0.0;
 
@@ -362,7 +363,7 @@ class SalaryPeriodService
 
         // A finished period with no attendance, leave or adjustment at all was simply not tracked
         // (e.g. before the app was used): it gets no salary instead of a full set of absences.
-        $tracked = $records->isNotEmpty() || $leaves->isNotEmpty() || $adjustments->isNotEmpty()
+        $tracked = $records->isNotEmpty() || $leaves->isNotEmpty() || $adjustments->where('recurring', false)->isNotEmpty()
             || in_array($status, [self::STATUS_ONGOING, self::STATUS_UPCOMING], true);
 
         $overtimePay = Money::sum($records->pluck('overtime_amount'));
@@ -412,8 +413,10 @@ class SalaryPeriodService
             'loan_deductions' => $loans['payroll'],
             'loan_payments' => $loans['paid'],
             'loan_received' => $loans['received'],
-            // What is left of the salary to spend: take-home − expenses − savings − loan payments + repayments received.
-            'remaining' => Money::round($takeHome - $expenses - $savings - $loans['paid'] + $loans['received']),
+            // Money earned outside the salary (side hustle, freelance, gifts…).
+            'other_income' => Money::round($otherIncome),
+            // Left to spend: take-home + other income − expenses − savings − loan payments + repayments received.
+            'remaining' => Money::round($takeHome + $otherIncome - $expenses - $savings - $loans['paid'] + $loans['received']),
             'progress' => $counts['working_days'] > 0 ? round($counts['days_done'] / $counts['working_days'], 4) : 0.0,
             'days' => $days,
         ];
@@ -430,10 +433,12 @@ class SalaryPeriodService
         $configured = $settings->isConfigured();
 
         $records = $user->attendanceRecords()->betweenDates($from, $to)->get();
-        $adjustments = $user->salaryAdjustments()->whereBetween('adjustment_date', [$from, $to])->get();
+        // Recurring entries are counted once here (a range may span several paydays; the period computation is exact).
+        $adjustments = $user->salaryAdjustments()->forPeriod($from, $to)->get();
         $expenses = (float) $user->expenses()->whereBetween('expense_date', [$from, $to])->sum('amount');
         $savings = $this->savingsBetween($user, $from, $to);
         $loans = $this->loansBetween($user, $from, $to);
+        $otherIncome = (float) $user->incomes()->whereBetween('income_date', [$from, $to])->sum('amount');
 
         $regular = Money::sum($records->pluck('regular_amount'));
         $overtimePay = Money::sum($records->pluck('overtime_amount'));
@@ -446,7 +451,7 @@ class SalaryPeriodService
         $absenceDeduction = $configured ? (Money::round(($this->salary->dailyRate($user, $settings) ?? 0) * $absentDays) ?? 0.0) : 0.0;
 
         $totalIncome = Money::round($salary + $income) ?? 0.0;
-        $remaining = Money::round($totalIncome - $deductions - $loans['payroll'] - $expenses - $savings - $loans['paid'] + $loans['received']) ?? 0.0;
+        $remaining = Money::round($totalIncome + $otherIncome - $deductions - $loans['payroll'] - $expenses - $savings - $loans['paid'] + $loans['received']) ?? 0.0;
 
         $worked = $records->filter(fn (AttendanceRecord $r) => in_array($r->status, [AttendanceRecord::STATUS_PRESENT, AttendanceRecord::STATUS_LATE], true));
 
@@ -466,7 +471,8 @@ class SalaryPeriodService
             'loan_deductions' => $loans['payroll'],
             'loan_payments' => $loans['paid'],
             'loan_received' => $loans['received'],
-            'remaining' => $configured ? $remaining : Money::round($income - $deductions - $loans['payroll'] - $expenses - $savings - $loans['paid'] + $loans['received']),
+            'other_income' => Money::round($otherIncome),
+            'remaining' => $configured ? $remaining : Money::round($income + $otherIncome - $deductions - $loans['payroll'] - $expenses - $savings - $loans['paid'] + $loans['received']),
             'days_worked' => $worked->count(),
             'days_absent' => $absentDays,
             'days_late' => $records->where('status', AttendanceRecord::STATUS_LATE)->count(),
