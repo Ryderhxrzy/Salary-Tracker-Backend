@@ -22,7 +22,7 @@ class SavingsController extends Controller
         $user = $request->user();
         $range = $this->statistics->resolveRange($user, $request->range(), $request->input('from'), $request->input('to'));
 
-        return $this->ok($this->savings->overview($user, $range['from'], $range['to']));
+        return $this->ok($this->savings->overview($user, $range));
     }
 
     /** GET /savings/transactions?range=...&goal_id= */
