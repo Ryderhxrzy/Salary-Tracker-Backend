@@ -6,6 +6,11 @@ class LoginRequest extends ApiFormRequest
 {
     public function rules(): array
     {
+        return static::rulesFor();
+    }
+
+    public static function rulesFor(): array
+    {
         return [
             'email' => ['required', 'string', 'email'],
             'password' => ['required', 'string'],
