@@ -114,6 +114,21 @@ class AttendanceTest extends TestCase
             ->assertJsonPath('data.notification.current.state', 'COMPLETED');
     }
 
+    public function test_half_day_is_paid_per_hour_worked(): void
+    {
+        $this->actingAsTracker();
+        $this->travelTo($this->manila('2026-09-25 14:00'));
+        $this->postJson('/api/attendance/time-in')->assertOk();
+
+        // 2:00 PM -> 5:00 PM = 3h, lunch already over: 769.23 / 8h x 3h
+        $this->travelTo($this->manila('2026-09-25 17:00'));
+        $this->postJson('/api/attendance/time-out')
+            ->assertOk()
+            ->assertJsonPath('data.attendance.worked_minutes', 180)
+            ->assertJsonPath('data.attendance.regular_amount', 288.46)
+            ->assertJsonPath('data.attendance.salary_amount', 288.46);
+    }
+
     public function test_attendance_works_without_salary_configuration(): void
     {
         $this->actingAsTracker(withSalary: false);
