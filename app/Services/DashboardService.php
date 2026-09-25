@@ -37,6 +37,7 @@ class DashboardService
         $settings = $this->salary->settings($user);
         $configured = $settings->isConfigured();
 
+        // Live hours while on duty (as if timed out right now); pay is only final at time out.
         $provisional = null;
         if ($record && $record->isOnDuty()) {
             $provisional = $this->attendance->provisional($user, $record, $now);
@@ -45,15 +46,21 @@ class DashboardService
 
         $todayExpenses = $this->expenses->totalBetween($user, $todayDate, $todayDate);
 
+        // Current cut-off + the previous one while it is still waiting for its payday.
         $period = $this->periods->currentPeriod($user);
-        $summary = $this->periods->details($user, $period);
+        $summary = $this->periods->compute($user, $period);
+        $previous = $this->periods->previousPeriod($user, $period);
+        $previousSummary = $this->periods->compute($user, $previous);
+        $payday = $previousSummary['status'] === SalaryPeriodService::STATUS_COMPLETED
+            ? ['period' => new SalaryPeriodResource($previous), 'summary' => $previousSummary]
+            : null;
 
-        // The previous cut-off stays on the dashboard until its pay date, then only in history.
-        $previous = $this->periods->periodFor($user, CarbonImmutable::parse($period->start_date->toDateString(), $tz)->subDay());
-        $payday = $previous->pay_date >= $todayDate ? [
-            'period' => new SalaryPeriodResource($previous),
-            'summary' => $this->periods->details($user, $previous),
-        ] : null;
+        // The nearest payday: the completed cut-off's if it has not been paid yet, else the current one's.
+        $nextPayday = $payday
+            ? ['date' => $previousSummary['pay_date'], 'days_until' => $previousSummary['days_until_pay'], 'amount' => $previousSummary['take_home'], 'period_name' => $previous->name, 'kind' => 'completed']
+            : ['date' => $summary['pay_date'], 'days_until' => $summary['days_until_pay'], 'amount' => $summary['take_home'], 'period_name' => $period->name, 'kind' => 'current'];
+
+        $recent = $user->attendanceRecords()->orderByDesc('work_date')->limit(5)->get();
 
         $schedule = $window ? [
             'start' => $window['start']->toIso8601String(),
@@ -97,6 +104,8 @@ class DashboardService
                 'summary' => $summary,
             ],
             'payday' => $payday,
+            'next_payday' => $nextPayday,
+            'recent_attendance' => AttendanceRecordResource::collection($recent),
             'salary' => $this->salary->rates($user),
             'notification' => $this->notifications->plan($user, $state),
         ];
