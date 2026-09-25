@@ -235,10 +235,8 @@ class AttendanceService
         $settings = $this->salary->settings($user);
 
         $expected = $window ? $window['expected_minutes'] : (int) round((float) $settings->expected_hours_per_day * 60);
-        $break = (int) $record->break_minutes;
-
         $total = (int) $record->time_in->diffInMinutes($record->time_out);
-        $worked = $total > $break ? $total - $break : $total;
+        $worked = max(0, $total - $this->breakOverlapMinutes($record, $window));
 
         if ($settings->overtime_enabled) {
             $regular = min($worked, $expected);
@@ -366,6 +364,36 @@ class AttendanceService
         $timeIn = CarbonImmutable::instance($record->time_in);
 
         return $timeIn->greaterThan($threshold) ? (int) $threshold->diffInMinutes($timeIn) : 0;
+    }
+
+    /**
+     * Break minutes that fall inside the shift. The break is placed in the middle of the
+     * scheduled window (8:00-5:00 with 60 min => 12:00-1:00), so a half day that never
+     * reaches lunch is not charged for it. Without a schedule the whole break applies
+     * only to shifts long enough to include one.
+     */
+    protected function breakOverlapMinutes(AttendanceRecord $record, ?array $window): int
+    {
+        $break = (int) $record->break_minutes;
+        if ($break <= 0) {
+            return 0;
+        }
+
+        $in = CarbonImmutable::instance($record->time_in);
+        $out = CarbonImmutable::instance($record->time_out);
+
+        if (! $window) {
+            return (int) $in->diffInMinutes($out) > $break * 4 ? $break : 0;
+        }
+
+        $midpoint = $window['start']->addMinutes(intdiv((int) $window['start']->diffInMinutes($window['end']), 2));
+        $breakStart = $midpoint->subMinutes(intdiv($break, 2));
+        $breakEnd = $breakStart->addMinutes($break);
+
+        $from = $in->greaterThan($breakStart) ? $in : $breakStart;
+        $to = $out->lessThan($breakEnd) ? $out : $breakEnd;
+
+        return $to->greaterThan($from) ? (int) $from->diffInMinutes($to) : 0;
     }
 
     protected function clearComputed(AttendanceRecord $record): void
