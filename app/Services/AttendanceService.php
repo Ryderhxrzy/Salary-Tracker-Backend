@@ -248,7 +248,8 @@ class AttendanceService
             // (5:00 PM end + 60 min => 6:00 PM); it is then counted from the end of the shift.
             $threshold = (int) ($settings->overtime_threshold_minutes ?? 60);
             $otFrom = $window ? $window['end'] : $from->addMinutes($expected);
-            $overtime = $timeOut->greaterThanOrEqualTo($otFrom->addMinutes($threshold)) ? max(0, $worked - $expected) : 0;
+            // Whole hours only: leftover minutes (5h08m => 5h) are not counted as overtime.
+            $overtime = $timeOut->greaterThanOrEqualTo($otFrom->addMinutes($threshold)) ? intdiv(max(0, $worked - $expected), 60) * 60 : 0;
         } else {
             $regular = $worked;
             $overtime = 0;

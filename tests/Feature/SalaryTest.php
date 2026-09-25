@@ -223,15 +223,22 @@ class SalaryTest extends TestCase
         $this->assertSame(11, $s['days_worked']);
         $this->assertSame(2, $s['days_absent']);
         $this->assertSame(240, $s['undertime_minutes'], 'half day on Sep 18');
-        $this->assertSame(1902, $s['overtime_minutes']);
+        $this->assertSame(1860, $s['overtime_minutes'], 'whole hours only: 5+5+6+5+5+5');
         $this->assertEqualsWithDelta(10000, $s['basic_salary'], 0.001);
         $this->assertEqualsWithDelta(1538.46, $s['absence_deduction'], 0.01);
         $this->assertEqualsWithDelta(384.62, $s['undertime_deduction'], 0.005);
-        $this->assertEqualsWithDelta(3810.02, $s['overtime_pay'], 0.01);
-        // 10,000 - 1,538.46 - 384.62 + 3,810.02
-        $this->assertEqualsWithDelta(11886.94, $s['salary'], 0.005);
+        $this->assertEqualsWithDelta(3725.89, $s['overtime_pay'], 0.01);
+        // 10,000 - 1,538.46 - 384.62 + 3,725.89
+        $this->assertEqualsWithDelta(11802.81, $s['salary'], 0.005);
         // What the completed days earned so far: 9 full days + half day + overtime.
-        $this->assertEqualsWithDelta(11117.71, $s['earned_to_date'], 0.005);
+        $this->assertEqualsWithDelta(11033.58, $s['earned_to_date'], 0.005);
+        // Day strip: one status per scheduled working day.
+        $strip = collect($s['days'])->pluck('status', 'date');
+        $this->assertSame('worked', $strip['2026-09-11']);
+        $this->assertSame('absent', $strip['2026-09-14']);
+        $this->assertSame('undertime', $strip['2026-09-18']);
+        $this->assertSame('on_duty', $strip['2026-09-25']);
+        $this->assertCount(13, $s['days']);
     }
 
     public function test_past_working_days_without_records_count_as_absent(): void

@@ -132,7 +132,7 @@ class DashboardTest extends TestCase
         $this->assertSame(1, $stats['summary']['days_worked']);
         $this->assertSame(1, $stats['summary']['days_late']);
         $this->assertSame(530, $stats['summary']['worked_minutes']);
-        $this->assertSame(50, $stats['summary']['overtime_minutes']);
+        $this->assertSame(0, $stats['summary']['overtime_minutes'], '50 extra minutes are not a whole overtime hour');
         $this->assertSame(530, $stats['summary']['average_minutes_per_day']);
         $this->assertCount(2, $stats['series']);
         $this->assertSame(80.0, (float) $stats['series'][0]['expenses']);

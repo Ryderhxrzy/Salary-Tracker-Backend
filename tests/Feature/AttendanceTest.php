@@ -149,13 +149,20 @@ class AttendanceTest extends TestCase
             ->assertJsonPath('data.overtime_minutes', 0)
             ->assertJsonPath('data.salary_amount', 769.23);
 
-        // 7:35 AM - 10:08 PM: 8:00-22:08 minus 1h break = 13h08m => 8h regular + 5h08m overtime (from 5 PM).
+        // 7:35 AM - 10:08 PM: 8:00-22:08 minus 1h break = 13h08m => 8h regular + 5h overtime
+        // (only whole hours count: the extra 8 minutes are dropped).
         $this->postJson('/api/attendance/manual', ['work_date' => '2026-09-17', 'time_in' => '07:35', 'time_out' => '22:08'])
             ->assertCreated()
             ->assertJsonPath('data.worked_minutes', 788)
-            ->assertJsonPath('data.overtime_minutes', 308)
-            ->assertJsonPath('data.overtime_amount', 616.98)
-            ->assertJsonPath('data.salary_amount', 1386.21);
+            ->assertJsonPath('data.overtime_minutes', 300)
+            ->assertJsonPath('data.overtime_amount', 600.95)
+            ->assertJsonPath('data.salary_amount', 1370.18);
+
+        // 6:59 PM: 1h59m past the shift end, but only 1 whole hour of overtime.
+        $this->postJson('/api/attendance/manual', ['work_date' => '2026-09-19', 'time_in' => '08:00', 'time_out' => '18:59'])
+            ->assertCreated()
+            ->assertJsonPath('data.overtime_minutes', 60)
+            ->assertJsonPath('data.overtime_amount', 120.19);
 
         // Half day 7:43 AM - 12:01 PM: 8:00-12:00 counted, the minute after 12:00 is break.
         $this->postJson('/api/attendance/manual', ['work_date' => '2026-09-18', 'time_in' => '07:43', 'time_out' => '12:01'])

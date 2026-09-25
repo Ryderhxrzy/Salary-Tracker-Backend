@@ -235,6 +235,9 @@ class SalaryPeriodService
         $absenceDeduction = 0.0;
         $restDayPay = 0.0;
 
+        // One entry per scheduled working day: worked | late | undertime | on_duty | incomplete |
+        // leave | unpaid_leave | absent | today | upcoming. Drives the day strip in the app.
+        $days = [];
         for ($day = CarbonImmutable::parse($from, $tz); $day->toDateString() <= $to; $day = $day->addDay()) {
             $date = $day->toDateString();
             $schedule = $schedules->get($day->dayOfWeek);
@@ -266,15 +269,13 @@ class SalaryPeriodService
                 $counts['days_remaining']++;
             }
 
-            if ($record && $record->time_in && $record->status === AttendanceRecord::STATUS_INCOMPLETE) {
+            $recordStatus = $record?->status;
+            if ($record && $record->time_in && $recordStatus === AttendanceRecord::STATUS_INCOMPLETE) {
                 $counts['days_incomplete']++; // forgot to time out: assumed a full day, needs correction
-
-                continue;
-            }
-
-            if ($worked) {
+                $dayStatus = 'incomplete';
+            } elseif ($worked) {
                 $counts['days_worked']++;
-                if ($record->status === AttendanceRecord::STATUS_LATE) {
+                if ($recordStatus === AttendanceRecord::STATUS_LATE) {
                     $counts['days_late']++;
                 }
                 if ($record->time_out) {
@@ -285,33 +286,33 @@ class SalaryPeriodService
                     if ($configured && $expected > 0) {
                         $undertimeDeduction += $daily * $short / $expected;
                     }
+                    $dayStatus = $recordStatus === AttendanceRecord::STATUS_LATE ? 'late' : ($short > 0 ? 'undertime' : 'worked');
+                } else {
+                    $dayStatus = 'on_duty'; // full day until timed out
                 }
-
-                continue; // on duty today: full day until timed out
-            }
-
-            // Leave records mirror onto the attendance record; the leave record knows whether it is paid.
-            if ($leave && $leave->type !== 'absent') {
+            } elseif ($leave && $leave->type !== 'absent') {
+                // Leave records mirror onto the attendance record; the leave record knows whether it is paid.
                 if ($leave->is_paid) {
                     $counts['days_leave']++;
+                    $dayStatus = 'leave';
                 } else {
                     $counts['days_unpaid_leave']++;
                     $absenceDeduction += $daily;
+                    $dayStatus = 'unpaid_leave';
                 }
-
-                continue;
-            }
-            $recordStatus = $record?->status;
-            if ($recordStatus === AttendanceRecord::STATUS_LEAVE) {
+            } elseif ($recordStatus === AttendanceRecord::STATUS_LEAVE) {
                 $counts['days_leave']++; // manual leave without a leave record: treated as paid
-
-                continue;
-            }
-            if ($recordStatus === AttendanceRecord::STATUS_ABSENT || ($leave && $leave->type === 'absent') || $date < $today) {
+                $dayStatus = 'leave';
+            } elseif ($recordStatus === AttendanceRecord::STATUS_ABSENT || ($leave && $leave->type === 'absent') || $date < $today) {
                 $counts['days_absent']++;
                 $absenceDeduction += $daily;
+                $dayStatus = 'absent';
+            } else {
+                // Today without a record and future days: still expected to be worked.
+                $dayStatus = $date === $today ? 'today' : 'upcoming';
             }
-            // Today without a record and future days: still expected to be worked.
+
+            $days[] = ['date' => $date, 'status' => $dayStatus];
         }
 
         // A finished period with no attendance, leave or adjustment at all was simply not tracked
@@ -361,6 +362,7 @@ class SalaryPeriodService
             'expenses' => Money::round($expenses),
             'remaining' => Money::round($takeHome - $expenses),
             'progress' => $counts['working_days'] > 0 ? round($counts['days_done'] / $counts['working_days'], 4) : 0.0,
+            'days' => $days,
         ];
     }
 
