@@ -10,16 +10,14 @@ use App\Models\User;
 use App\Models\Wallet;
 use App\Models\WalletTransfer;
 use App\Support\Money;
-use App\Support\MoneyVersion;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\Cache;
 
 /**
  * Wallets (cash, GCash, bank...) and their computed balances:
  *
  *   balance = opening balance (as of a date)
- *           + salary received since then (paid cut-offs, only into the wallet that receives the salary)
+ *           + salaries received since then (each "Receive salary" confirmation, into the wallet it named)
  *           − expenses paid from the wallet since then
  *           − savings deposited from the wallet + savings withdrawn into it
  *           + loans received into it − money lent from it − loan payments made from it + repayments received into it
@@ -225,7 +223,7 @@ class WalletService
             });
 
         foreach ($wallets as $wallet) {
-            $salary = $wallet->receives_salary ? $this->salaryReceived($user, $wallet) : 0.0;
+            $salary = $this->salaryReceived($user, $wallet);
             $wallet->salary_received = Money::round($salary);
             $wallet->spent = Money::round($spent[$wallet->id] ?? 0.0);
             $wallet->saved = Money::round($saved[$wallet->id] ?? 0.0);
@@ -242,26 +240,11 @@ class WalletService
         return $wallets;
     }
 
-    /**
-     * Take-home pay of every cut-off paid on or after the wallet's start date.
-     * Cached until the day changes or something affecting past salaries is edited.
-     */
+    /** Salaries confirmed as received into this wallet on or after its start date. */
     public function salaryReceived(User $user, Wallet $wallet): float
     {
-        $today = CarbonImmutable::now($user->timezone())->toDateString();
         $asOf = $wallet->balance_as_of->toDateString();
-        $key = sprintf('wallet-salary:%d:%d:%s:%s', $user->id, MoneyVersion::get($user->id), $asOf, $today);
 
-        return (float) Cache::remember($key, now()->addDay(), function () use ($user, $asOf, $today) {
-            $total = 0.0;
-            foreach ($this->periods->periodsPaidBetween($user, $asOf, $today) as $period) {
-                $summary = $this->periods->compute($user, $period);
-                if ($summary['tracked']) {
-                    $total += (float) $summary['take_home'];
-                }
-            }
-
-            return Money::round($total) ?? 0.0;
-        });
+        return Money::round((float) $user->salaryReceipts()->where('wallet_id', $wallet->id)->where('received_date', '>=', $asOf)->sum('amount')) ?? 0.0;
     }
 }
