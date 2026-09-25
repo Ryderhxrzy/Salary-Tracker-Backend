@@ -10,6 +10,11 @@ class UpdateSalarySettingRequest extends ApiFormRequest
 {
     public function rules(): array
     {
+        return static::rulesFor();
+    }
+
+    public static function rulesFor(): array
+    {
         $money = ['nullable', 'numeric', 'min:0', 'max:99999999'];
 
         return [
@@ -39,17 +44,21 @@ class UpdateSalarySettingRequest extends ApiFormRequest
 
     public function after(): array
     {
-        return [
-            function (Validator $validator) {
-                $type = $this->input('salary_type');
-                if (! $type) {
-                    return;
-                }
-                $field = $type === 'per_period' ? 'basic_salary' : $type.'_rate';
-                if ($this->input($field) === null || $this->input($field) === '') {
-                    $validator->errors()->add($field, $type === 'per_period' ? 'Please enter your basic salary per pay period.' : 'Please enter your '.str_replace('_', ' ', $type).' salary rate.');
-                }
-            },
-        ];
+        return [static::rateCheck($this->all())];
+    }
+
+    /** The rate matching the chosen salary type must be present. */
+    public static function rateCheck(array $input): \Closure
+    {
+        return function (Validator $validator) use ($input) {
+            $type = $input['salary_type'] ?? null;
+            if (! $type) {
+                return;
+            }
+            $field = $type === 'per_period' ? 'basic_salary' : $type.'_rate';
+            if (! isset($input[$field]) || $input[$field] === '') {
+                $validator->errors()->add($field, $type === 'per_period' ? 'Please enter your basic salary per pay period.' : 'Please enter your '.str_replace('_', ' ', $type).' salary rate.');
+            }
+        };
     }
 }
