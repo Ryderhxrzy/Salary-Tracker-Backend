@@ -52,6 +52,8 @@ type Query {
   loansOverview(range: String, from: String, to: String): LoanOverview! @guard @field(resolver: "App\\GraphQL\\Queries\\ApiQueries@loansOverview")
   "Other income (side hustle, freelance, gifts…) in a range."
   incomes(range: String, from: String, to: String): IncomeList! @guard @field(resolver: "App\\GraphQL\\Queries\\ApiQueries@incomes")
+  "Money moved between two wallets in a range; `wallet` keeps only the transfers touching that wallet."
+  walletTransfers(range: String, from: String, to: String, wallet: Int): WalletTransferList! @guard @field(resolver: "App\\GraphQL\\Queries\\ApiQueries@walletTransfers")
 }
 
 # ---------------------------------------------------------------------------
@@ -672,6 +674,29 @@ type Wallet {
   saved: Float
   loans: Float
   other_income: Float
+  transfers_in: Float
+  transfers_out: Float
+}
+
+type WalletTransfer {
+  id: Int!
+  from_wallet_id: Int
+  to_wallet_id: Int
+  from_wallet: WalletRef
+  to_wallet: WalletRef
+  amount: Float!
+  "Charged on top of the amount; leaves the source wallet only."
+  fee: Float!
+  transfer_date: String!
+  notes: String
+  created_at: String
+}
+
+type WalletTransferList {
+  range: RangeInfo!
+  total: Float!
+  fees: Float!
+  transfers: [WalletTransfer!]!
 }
 
 type Income {
