@@ -2,6 +2,8 @@
 
 namespace App\Services;
 
+use App\Models\Loan;
+use App\Models\LoanPayment;
 use App\Models\SavingsTransaction;
 use App\Models\User;
 use App\Models\Wallet;
@@ -18,6 +20,7 @@ use Illuminate\Support\Facades\Cache;
  *           + salary received since then (paid cut-offs, only into the wallet that receives the salary)
  *           − expenses paid from the wallet since then
  *           − savings deposited from the wallet + savings withdrawn into it
+ *           + loans received into it − money lent from it − loan payments made from it + repayments received into it
  */
 class WalletService
 {
@@ -141,12 +144,30 @@ class WalletService
                 }
             });
 
+        // Loans: the principal received (borrowed) or handed out (lent), then every payment.
+        $loans = [];
+        $user->loans()->whereNotNull('wallet_id')->where('start_date', '>=', $earliest)->get(['wallet_id', 'type', 'start_date', 'principal_amount'])
+            ->each(function (Loan $loan) use (&$loans, $wallets) {
+                $wallet = $wallets->firstWhere('id', $loan->wallet_id);
+                if ($wallet && $loan->start_date->toDateString() >= $wallet->balance_as_of->toDateString()) {
+                    $loans[$wallet->id] = ($loans[$wallet->id] ?? 0.0) + ($loan->isBorrowed() ? 1 : -1) * (float) $loan->principal_amount;
+                }
+            });
+        $user->loanPayments()->with('loan:id,type')->whereNotNull('wallet_id')->where('via_payroll', false)->where('payment_date', '>=', $earliest)->get()
+            ->each(function (LoanPayment $payment) use (&$loans, $wallets) {
+                $wallet = $wallets->firstWhere('id', $payment->wallet_id);
+                if ($wallet && $payment->loan && $payment->payment_date->toDateString() >= $wallet->balance_as_of->toDateString()) {
+                    $loans[$wallet->id] = ($loans[$wallet->id] ?? 0.0) + ($payment->loan->isBorrowed() ? -1 : 1) * (float) $payment->amount;
+                }
+            });
+
         foreach ($wallets as $wallet) {
             $salary = $wallet->receives_salary ? $this->salaryReceived($user, $wallet) : 0.0;
             $wallet->salary_received = Money::round($salary);
             $wallet->spent = Money::round($spent[$wallet->id] ?? 0.0);
             $wallet->saved = Money::round($saved[$wallet->id] ?? 0.0);
-            $wallet->balance = Money::round((float) $wallet->opening_balance + $salary - $wallet->spent - $wallet->saved);
+            $wallet->loans = Money::round($loans[$wallet->id] ?? 0.0);
+            $wallet->balance = Money::round((float) $wallet->opening_balance + $salary - $wallet->spent - $wallet->saved + $wallet->loans);
         }
 
         return $wallets;
