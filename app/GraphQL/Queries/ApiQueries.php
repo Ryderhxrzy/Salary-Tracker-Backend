@@ -19,6 +19,7 @@ use App\Http\Resources\SavingsGoalResource;
 use App\Http\Resources\SavingsTransactionResource;
 use App\Http\Resources\UserResource;
 use App\Http\Resources\WalletResource;
+use App\Http\Resources\WalletTransferResource;
 use App\Http\Resources\WorkScheduleResource;
 use App\Models\SalaryAdjustment;
 use App\Models\SalaryPeriod;
@@ -325,6 +326,25 @@ class ApiQueries
         $items = $user->incomes()->with('wallet')->whereBetween('income_date', [$range['from'], $range['to']])->orderByDesc('income_date')->orderByDesc('id')->get();
 
         return $this->normalize(['range' => $range, 'total' => Money::sum($items->pluck('amount')), 'incomes' => IncomeResource::collection($items)]);
+    }
+
+    public function walletTransfers($root, array $args, GraphQLContext $context): array
+    {
+        $user = $this->user($context);
+        $range = $this->resolveRange($user, $args);
+        $query = $user->walletTransfers()->with(['fromWallet', 'toWallet'])->whereBetween('transfer_date', [$range['from'], $range['to']]);
+        if (! empty($args['wallet'])) {
+            $walletId = (int) $args['wallet'];
+            $query->where(fn ($q) => $q->where('from_wallet_id', $walletId)->orWhere('to_wallet_id', $walletId));
+        }
+        $items = $query->orderByDesc('transfer_date')->orderByDesc('id')->get();
+
+        return $this->normalize([
+            'range' => $range,
+            'total' => Money::sum($items->pluck('amount')),
+            'fees' => Money::sum($items->pluck('fee')),
+            'transfers' => WalletTransferResource::collection($items),
+        ]);
     }
 
     /** ?range=today|week|month|period|custom&from&to, validated like RangeRequest. */
