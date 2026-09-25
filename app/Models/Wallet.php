@@ -48,4 +48,14 @@ class Wallet extends Model
     {
         return $this->hasMany(SavingsTransaction::class);
     }
+
+    public function transfersOut(): HasMany
+    {
+        return $this->hasMany(WalletTransfer::class, 'from_wallet_id');
+    }
+
+    public function transfersIn(): HasMany
+    {
+        return $this->hasMany(WalletTransfer::class, 'to_wallet_id');
+    }
 }
