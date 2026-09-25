@@ -31,16 +31,13 @@ class WalletTransferController extends Controller
         return $this->ok([
             'range' => $range,
             'total' => Money::sum($items->pluck('amount')),
-            'fees' => Money::sum($items->pluck('fee')),
             'transfers' => WalletTransferResource::collection($items),
         ]);
     }
 
     public function store(StoreWalletTransferRequest $request): JsonResponse
     {
-        $data = $request->validated();
-        $data['fee'] = $data['fee'] ?? 0;
-        $transfer = $request->user()->walletTransfers()->create($data);
+        $transfer = $request->user()->walletTransfers()->create($request->validated());
 
         return $this->created(new WalletTransferResource($transfer->load(['fromWallet', 'toWallet'])), 'Transfer recorded.');
     }
@@ -48,11 +45,7 @@ class WalletTransferController extends Controller
     public function update(StoreWalletTransferRequest $request, WalletTransfer $transfer): JsonResponse
     {
         $this->authorize('update', $transfer);
-        $data = $request->validated();
-        if (array_key_exists('fee', $data) && $data['fee'] === null) {
-            $data['fee'] = 0;
-        }
-        $transfer->fill($data)->save();
+        $transfer->fill($request->validated())->save();
 
         return $this->ok(new WalletTransferResource($transfer->fresh(['fromWallet', 'toWallet'])), 'Transfer updated.');
     }
