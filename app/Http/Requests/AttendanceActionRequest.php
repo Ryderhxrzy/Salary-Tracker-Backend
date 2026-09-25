@@ -12,6 +12,11 @@ class AttendanceActionRequest extends ApiFormRequest
 {
     public function rules(): array
     {
+        return static::rulesFor();
+    }
+
+    public static function rulesFor(): array
+    {
         return [
             'idempotency_key' => ['nullable', 'string', 'max:64'],
             'occurred_at' => ['nullable', 'date'],
