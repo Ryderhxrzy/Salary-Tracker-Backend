@@ -36,7 +36,7 @@ class DashboardTest extends TestCase
         $this->assertTrue($upcoming->contains('date', '2026-09-28'));
     }
 
-    public function test_dashboard_on_rest_day_and_live_earnings_on_duty(): void
+    public function test_dashboard_on_rest_day_and_no_earnings_until_time_out(): void
     {
         $this->actingAsTracker();
         $this->travelTo($this->manila('2026-09-27 09:00')); // Sunday
@@ -51,9 +51,17 @@ class DashboardTest extends TestCase
         $this->getJson('/api/dashboard')->assertOk()
             ->assertJsonPath('data.today.state', 'ON_DUTY')
             ->assertJsonPath('data.today.is_live', true)
-            ->assertJsonPath('data.today.worked_minutes', 180) // 4h minus 1h break
+            ->assertJsonPath('data.today.worked_minutes', 240) // 8:00-12:00, lunch (12:00-1:00) not reached yet
+            ->assertJsonPath('data.today.earned', null)
+            ->assertJsonPath('data.period.summary.salary_earned', 0);
+
+        $this->travelTo($this->manila('2026-09-28 17:00'));
+        $this->postJson('/api/attendance/time-out')->assertOk();
+
+        $this->getJson('/api/dashboard')->assertOk()
+            ->assertJsonPath('data.today.state', 'COMPLETED')
             ->assertJsonPath('data.today.earned', 769.23)
-            ->assertJsonPath('data.period.summary.live', true);
+            ->assertJsonPath('data.period.summary.salary_earned', 769.23);
     }
 
     public function test_work_schedule_can_be_changed_and_drives_notifications(): void
