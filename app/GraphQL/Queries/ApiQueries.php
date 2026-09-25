@@ -14,6 +14,7 @@ use App\Http\Resources\NotificationSettingResource;
 use App\Http\Resources\ProfileResource;
 use App\Http\Resources\SalaryAdjustmentResource;
 use App\Http\Resources\SalaryPeriodResource;
+use App\Http\Resources\SalaryReceiptResource;
 use App\Http\Resources\SalarySettingResource;
 use App\Http\Resources\SavingsGoalResource;
 use App\Http\Resources\SavingsTransactionResource;
@@ -29,6 +30,7 @@ use App\Services\ExpenseService;
 use App\Services\LoanService;
 use App\Services\NotificationService;
 use App\Services\SalaryPeriodService;
+use App\Services\SalaryReceiptService;
 use App\Services\SalaryService;
 use App\Services\SavingsService;
 use App\Services\StatisticsService;
@@ -326,6 +328,11 @@ class ApiQueries
         $items = $user->incomes()->with('wallet')->whereBetween('income_date', [$range['from'], $range['to']])->orderByDesc('income_date')->orderByDesc('id')->get();
 
         return $this->normalize(['range' => $range, 'total' => Money::sum($items->pluck('amount')), 'incomes' => IncomeResource::collection($items)]);
+    }
+
+    public function salaryReceipts($root, array $args, GraphQLContext $context): array
+    {
+        return $this->normalize(SalaryReceiptResource::collection(app(SalaryReceiptService::class)->history($this->user($context), (int) ($args['limit'] ?? 24))));
     }
 
     public function walletTransfers($root, array $args, GraphQLContext $context): array
