@@ -14,6 +14,7 @@ class UpdateSalarySettingRequest extends ApiFormRequest
 
         return [
             'salary_type' => ['nullable', Rule::in(SalarySetting::SALARY_TYPES)],
+            'basic_salary' => $money,
             'daily_rate' => $money,
             'hourly_rate' => $money,
             'weekly_rate' => $money,
@@ -44,9 +45,9 @@ class UpdateSalarySettingRequest extends ApiFormRequest
                 if (! $type) {
                     return;
                 }
-                $field = $type.'_rate';
+                $field = $type === 'per_period' ? 'basic_salary' : $type.'_rate';
                 if ($this->input($field) === null || $this->input($field) === '') {
-                    $validator->errors()->add($field, 'Please enter your '.str_replace('_', ' ', $type).' salary rate.');
+                    $validator->errors()->add($field, $type === 'per_period' ? 'Please enter your basic salary per pay period.' : 'Please enter your '.str_replace('_', ' ', $type).' salary rate.');
                 }
             },
         ];
