@@ -51,6 +51,8 @@ class NotificationService
             'time_out' => $record?->time_out?->toIso8601String(),
             'scheduled_start' => $window ? $window['start']->toIso8601String() : null,
             'scheduled_end' => $window ? $window['end']->toIso8601String() : null,
+            'break_start' => $window ? $window['break_start']?->toIso8601String() : null,
+            'break_end' => $window ? $window['break_end']?->toIso8601String() : null,
             'show_at' => $window ? $window['start']->subMinutes($lead)->toIso8601String() : null,
             'time_in_label' => $record?->time_in?->setTimezone($tz)->format('g:i A'),
         ];
@@ -67,6 +69,8 @@ class NotificationService
                 'date' => $date->toDateString(),
                 'scheduled_start' => $w['start']->toIso8601String(),
                 'scheduled_end' => $w['end']->toIso8601String(),
+                'break_start' => $w['break_start']?->toIso8601String(),
+                'break_end' => $w['break_end']?->toIso8601String(),
                 'show_at' => $w['start']->subMinutes($lead)->toIso8601String(),
             ];
         }
