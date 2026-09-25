@@ -62,10 +62,15 @@ class GraphQLTest extends TestCase
             'input' => ['amount' => -1, 'expense_date' => '2026-09-25'],
         ])->assertGraphQLValidationKeys(['amount']);
 
+        // Savings always come from an account (the default Cash one here).
+        $cash = $this->getJson('/api/wallets')->assertOk()->json('data.0');
         $goal = $this->graphQL('mutation { createGoal(input: { name: "Phone", target_amount: 1000 }) { id } }')->json('data.createGoal');
         $this->graphQL('mutation ($input: SavingsTransactionInput!) { createSavingsTransaction(input: $input) { type amount goal { name } } }', [
             'input' => ['amount' => 300, 'transaction_date' => '2026-09-25', 'savings_goal_id' => $goal['id']],
-        ])->assertJsonPath('data.createSavingsTransaction.goal.name', 'Phone');
+        ])->assertGraphQLValidationKeys(['wallet_id']);
+        $this->graphQL('mutation ($input: SavingsTransactionInput!) { createSavingsTransaction(input: $input) { type amount goal { name } wallet { name } } }', [
+            'input' => ['amount' => 300, 'transaction_date' => '2026-09-25', 'savings_goal_id' => $goal['id'], 'wallet_id' => $cash['id']],
+        ])->assertJsonPath('data.createSavingsTransaction.goal.name', 'Phone')->assertJsonPath('data.createSavingsTransaction.wallet.name', 'Cash');
 
         $dashboard = $this->graphQL('{ dashboard { today { state earned } period { summary { expenses savings remaining take_home } } money { total_saved wallets { name balance } } recent_attendance { work_date } } }')
             ->assertJsonPath('data.dashboard.today.state', 'COMPLETED')
