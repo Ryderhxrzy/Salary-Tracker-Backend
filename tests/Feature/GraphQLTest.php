@@ -31,7 +31,8 @@ class GraphQLTest extends TestCase
         $this->withHeader('Authorization', "Bearer {$token}")
             ->graphQL('{ me { id email } wallets { name type receives_salary } }')
             ->assertJsonPath('data.me.id', $user->id)
-            ->assertJsonPath('data.wallets.0.name', 'Cash');
+            ->assertJsonPath('data.wallets.0.name', 'Cash')
+            ->assertJsonPath('data.wallets.1.institution_id', 'gcash');
     }
 
     public function test_dashboard_attendance_and_money_flow(): void
