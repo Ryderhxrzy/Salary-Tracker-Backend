@@ -15,9 +15,8 @@ class SavingsTest extends TestCase
         $this->actingAsTracker();
         $this->travelTo($this->manila('2026-09-22 12:00'));
 
-        // Nobody starts with accounts; the user adds Cash and GCash.
-        $this->getJson('/api/wallets')->assertOk()->assertJsonCount(0, 'data');
-        $cash = $this->postJson('/api/wallets', ['name' => 'Cash', 'type' => 'cash', 'category' => 'cash', 'institution_id' => 'cash', 'receives_salary' => true, 'is_default' => true])->assertCreated()->json('data');
+        // Everyone starts with one Cash account (receives the salary); the user adds the rest.
+        $cash = $this->getJson('/api/wallets')->assertOk()->assertJsonCount(1, 'data')->assertJsonPath('data.0.institution_id', 'cash')->json('data.0');
         $gcash = $this->postJson('/api/wallets', ['name' => 'GCash', 'type' => 'gcash', 'category' => 'ewallet', 'institution_id' => 'gcash', 'account_type' => 'ewallet'])->assertCreated()->json('data');
         $wallets = $this->getJson('/api/wallets')->assertOk()->json('data');
         $this->assertSame(['Cash', 'GCash'], array_column($wallets, 'name'));
@@ -83,10 +82,10 @@ class SavingsTest extends TestCase
     {
         $this->actingAsTracker(true, ['salary_type' => 'per_period', 'basic_salary' => 10000]);
 
-        // A cash account from Sep 1 receives the salary; work the whole Sep 11-25 cut-off (paid on the 30th).
+        // The default Cash account (from Sep 1) receives the salary; work the whole Sep 11-25 cut-off (paid on the 30th).
         $this->travelTo($this->manila('2026-09-01 09:00'));
-        $cash = $this->postJson('/api/wallets', ['name' => 'Cash', 'type' => 'cash', 'category' => 'cash', 'institution_id' => 'cash', 'receives_salary' => true, 'is_default' => true])->assertCreated()->json('data');
         $wallets = $this->getJson('/api/wallets')->assertOk()->json('data');
+        $cash = $wallets[0];
 
         foreach (['11', '12', '14', '15', '16', '17', '18', '19', '21', '22', '23', '24', '25'] as $day) {
             $this->postJson('/api/attendance/manual', ['work_date' => "2026-09-{$day}", 'time_in' => '08:00', 'time_out' => '17:00'])->assertCreated();
@@ -102,7 +101,7 @@ class SavingsTest extends TestCase
         $this->assertSame(10000.0, (float) $wallet['salary_received']);
         $this->assertSame(10000.0, (float) $wallet['balance']);
 
-        // Moving the salary to a new BPI payroll account moves the credit with it.
+        // Moving the salary to a new BPI payroll account moves the credit with it: only one account receives the salary.
         $bank = $this->postJson('/api/wallets', ['name' => 'BPI Payroll', 'type' => 'bank', 'category' => 'bank', 'institution_id' => 'bpi', 'account_type' => 'payroll', 'last4' => '1234', 'holder_name' => 'Juan', 'balance_as_of' => '2026-09-01'])
             ->assertCreated()->assertJsonPath('data.institution_id', 'bpi')->assertJsonPath('data.last4', '1234')->json('data');
         $this->putJson("/api/wallets/{$bank['id']}", ['receives_salary' => true])->assertOk();
@@ -110,13 +109,54 @@ class SavingsTest extends TestCase
         $this->assertSame(10000.0, (float) $wallets->firstWhere('id', $bank['id'])['balance']);
         $this->assertSame(0.0, (float) $wallets->firstWhere('id', $cash['id'])['balance']);
         $this->assertFalse($wallets->firstWhere('id', $cash['id'])['receives_salary']);
+        $this->assertSame(1, $wallets->where('receives_salary', true)->count());
+
+        // Side-hustle income lands in the account it was received into and adds to "left to spend".
+        $this->postJson('/api/incomes', ['amount' => 1500, 'income_date' => '2026-09-28', 'type' => 'freelance', 'source' => 'Logo design', 'wallet_id' => $bank['id']])
+            ->assertCreated()->assertJsonPath('data.wallet.name', 'BPI Payroll');
+        $this->postJson('/api/incomes', ['amount' => 0, 'income_date' => '2026-09-28'])->assertStatus(422);
+        $this->assertSame(11500.0, (float) collect($this->getJson('/api/wallets')->json('data'))->firstWhere('id', $bank['id'])['balance']);
+        $incomes = $this->getJson('/api/incomes?range=custom&from=2026-09-26&to=2026-10-10')->assertOk()->json('data');
+        $this->assertSame(1500.0, (float) $incomes['total']);
+        $summary = $this->getJson('/api/salary/summary?range=custom&from=2026-09-26&to=2026-10-10')->assertOk()->json('data.summary');
+        $this->assertSame(1500.0, (float) $summary['other_income']);
+        $this->getJson('/api/dashboard')->assertOk()->assertJsonPath('data.money.other_income', 1500);
+    }
+
+    public function test_recurring_deductions_apply_every_payday(): void
+    {
+        $this->actingAsTracker(true, ['salary_type' => 'per_period', 'basic_salary' => 10000]);
+        $this->travelTo($this->manila('2026-09-22 12:00'));
+
+        // ₱600 SSS every payday from Sep 1, a one-time ₱2,000 bonus on Sep 15.
+        $sss = $this->postJson('/api/salary-adjustments', ['type' => 'deduction', 'amount' => 600, 'adjustment_date' => '2026-09-01', 'description' => 'SSS', 'recurring' => true])
+            ->assertCreated()->assertJsonPath('data.recurring', true)->json('data');
+        $this->postJson('/api/salary-adjustments', ['type' => 'bonus', 'amount' => 2000, 'adjustment_date' => '2026-09-15'])->assertCreated();
+        $this->postJson('/api/salary-adjustments', ['type' => 'deduction', 'amount' => 10, 'adjustment_date' => '2026-09-10', 'recurring' => true, 'recurring_until' => '2026-09-01'])->assertStatus(422);
+
+        $current = $this->getJson('/api/salary')->assertOk()->json('data.summary'); // Sep 11-25
+        $this->assertSame(600.0, (float) $current['deductions']);
+        $this->assertSame(2000.0, (float) $current['additional_income']);
+
+        $list = $this->getJson('/api/salary-adjustments?range=period')->assertOk()->json('data');
+        $this->assertSame(2000.0, (float) $list['income']);
+        $this->assertSame(600.0, (float) $list['deductions']);
+        $this->assertCount(2, $list['adjustments']);
+
+        // The next cut-off (Sep 26 - Oct 10) still has the SSS deduction but not the bonus.
+        $next = $this->getJson('/api/salary/summary?range=custom&from=2026-09-26&to=2026-10-10')->assertOk()->json('data.summary');
+        $this->assertSame(600.0, (float) $next['deductions']);
+        $this->assertSame(0.0, (float) $next['additional_income']);
+
+        // Ending the recurrence stops it for later cut-offs.
+        $this->putJson("/api/salary-adjustments/{$sss['id']}", ['recurring_until' => '2026-09-25'])->assertOk();
+        $this->assertSame(0.0, (float) $this->getJson('/api/salary/summary?range=custom&from=2026-09-26&to=2026-10-10')->json('data.summary.deductions'));
     }
 
     public function test_wallet_validation_and_ownership(): void
     {
         $this->actingAsTracker();
-        $this->getJson('/api/wallets')->assertOk()->assertJsonCount(0, 'data');
-        $this->postJson('/api/wallets', ['name' => 'Cash', 'type' => 'cash', 'category' => 'cash', 'institution_id' => 'cash'])->assertCreated();
+        $this->getJson('/api/wallets')->assertOk()->assertJsonCount(1, 'data');
 
         $created = $this->postJson('/api/wallets', ['name' => 'Maya', 'type' => 'maya', 'category' => 'ewallet', 'institution_id' => 'maya', 'opening_balance' => 50])->assertCreated()
             ->assertJsonPath('data.category', 'ewallet')->json('data');
