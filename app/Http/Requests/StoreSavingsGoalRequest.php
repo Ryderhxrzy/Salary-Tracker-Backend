@@ -9,7 +9,11 @@ class StoreSavingsGoalRequest extends ApiFormRequest
 {
     public function rules(): array
     {
-        $isUpdate = $this->route('goal') !== null;
+        return static::rulesFor($this->route('goal') !== null);
+    }
+
+    public static function rulesFor(bool $isUpdate = false): array
+    {
         $required = $isUpdate ? 'sometimes' : 'required';
 
         return [
