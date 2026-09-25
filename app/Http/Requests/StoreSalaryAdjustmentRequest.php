@@ -9,7 +9,11 @@ class StoreSalaryAdjustmentRequest extends ApiFormRequest
 {
     public function rules(): array
     {
-        $isUpdate = $this->route('adjustment') !== null;
+        return static::rulesFor($this->route('adjustment') !== null);
+    }
+
+    public static function rulesFor(bool $isUpdate = false): array
+    {
         $required = $isUpdate ? 'sometimes' : 'required';
 
         return [
