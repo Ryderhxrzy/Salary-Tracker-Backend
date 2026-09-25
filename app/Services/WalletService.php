@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\Income;
 use App\Models\Loan;
 use App\Models\LoanPayment;
 use App\Models\SavingsTransaction;
@@ -27,17 +28,32 @@ class WalletService
     public function __construct(protected SalaryPeriodService $periods) {}
 
     /**
-     * The user's wallets, loaded once per request. Nothing is created automatically:
-     * the user adds their own accounts (bank, e-wallet, cash).
+     * The user's wallets, loaded once per request. A user without any account gets a
+     * single "Cash" one that receives the salary; everything else is added by the user.
      *
      * @return Collection<int, Wallet>
      */
     public function ensureDefaults(User $user): Collection
     {
-        if ($user->relationLoaded('wallets')) {
+        if ($user->relationLoaded('wallets') && $user->wallets->isNotEmpty()) {
             return $user->wallets;
         }
         $wallets = $user->wallets()->get();
+        if ($wallets->isEmpty()) {
+            $user->wallets()->create([
+                'name' => 'Cash', 'type' => 'cash', 'category' => 'cash', 'institution_id' => 'cash',
+                'opening_balance' => 0, 'balance_as_of' => CarbonImmutable::now($user->timezone())->toDateString(),
+                'receives_salary' => true, 'is_default' => true, 'sort_order' => 0,
+            ]);
+            $wallets = $user->wallets()->get();
+        }
+        // Only one account can receive the salary; older data may have several flagged.
+        $salaryWallets = $wallets->where('receives_salary', true);
+        if ($salaryWallets->count() > 1) {
+            $keep = $salaryWallets->first();
+            $user->wallets()->whereKeyNot($keep->id)->update(['receives_salary' => false]);
+            $wallets = $user->wallets()->get();
+        }
         $user->setRelation('wallets', $wallets);
 
         return $wallets;
@@ -135,6 +151,16 @@ class WalletService
                 }
             });
 
+        // Other income (side hustle…) that went into a wallet.
+        $income = [];
+        $user->incomes()->whereNotNull('wallet_id')->where('income_date', '>=', $earliest)->get(['wallet_id', 'income_date', 'amount'])
+            ->each(function (Income $row) use (&$income, $wallets) {
+                $wallet = $wallets->firstWhere('id', $row->wallet_id);
+                if ($wallet && $row->income_date->toDateString() >= $wallet->balance_as_of->toDateString()) {
+                    $income[$wallet->id] = ($income[$wallet->id] ?? 0.0) + (float) $row->amount;
+                }
+            });
+
         $saved = [];
         $user->savingsTransactions()
             ->where('transaction_date', '>=', $earliest)
@@ -170,7 +196,8 @@ class WalletService
             $wallet->spent = Money::round($spent[$wallet->id] ?? 0.0);
             $wallet->saved = Money::round($saved[$wallet->id] ?? 0.0);
             $wallet->loans = Money::round($loans[$wallet->id] ?? 0.0);
-            $wallet->balance = Money::round((float) $wallet->opening_balance + $salary - $wallet->spent - $wallet->saved + $wallet->loans);
+            $wallet->other_income = Money::round($income[$wallet->id] ?? 0.0);
+            $wallet->balance = Money::round((float) $wallet->opening_balance + $salary + $wallet->other_income - $wallet->spent - $wallet->saved + $wallet->loans);
         }
 
         return $wallets;
