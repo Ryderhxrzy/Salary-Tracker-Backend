@@ -39,6 +39,46 @@ class SalaryTest extends TestCase
         }
     }
 
+    public function test_semi_monthly_pay_dates(): void
+    {
+        $user = $this->trackerUser();
+        $service = app(SalaryPeriodService::class);
+        $settings = $user->salarySetting;
+
+        $cases = [
+            '2026-08-25' => '2026-08-30', // Aug 11-25 paid Aug 30
+            '2026-09-10' => '2026-09-15', // Aug 26-Sep 10 paid Sep 15
+            '2027-02-25' => '2027-02-28', // Feb 11-25 paid at month end
+        ];
+
+        foreach ($cases as $end => $payDate) {
+            $this->assertSame($payDate, $service->payDateFor($settings, CarbonImmutable::parse($end, 'Asia/Manila'))->toDateString(), "pay date for cut-off ending {$end}");
+        }
+    }
+
+    public function test_dashboard_shows_cutoff_pay_date_expected_salary_and_previous_payday(): void
+    {
+        $this->actingAsTracker();
+        // Thursday Aug 27: current cut-off Aug 26 - Sep 10, previous Aug 11 - 25 is paid Aug 30.
+        $this->travelTo($this->manila('2026-08-27 07:00'));
+
+        $response = $this->getJson('/api/dashboard')->assertOk()
+            ->assertJsonPath('data.period.period.start_date', '2026-08-26')
+            ->assertJsonPath('data.period.period.end_date', '2026-09-10')
+            ->assertJsonPath('data.period.period.pay_date', '2026-09-15')
+            // Mon-Sat from Aug 26 to Sep 10 = 14 working days, all still ahead except Aug 26.
+            ->assertJsonPath('data.period.summary.working_days', 14)
+            ->assertJsonPath('data.period.summary.remaining_days', 13)
+            ->assertJsonPath('data.payday.period.start_date', '2026-08-11')
+            ->assertJsonPath('data.payday.period.pay_date', '2026-08-30');
+
+        $this->assertEqualsWithDelta(13 * 769.23, $response->json('data.period.summary.expected_salary'), 0.01);
+
+        // After Aug 30 the previous cut-off leaves the dashboard.
+        $this->travelTo($this->manila('2026-08-31 07:00'));
+        $this->getJson('/api/dashboard')->assertOk()->assertJsonPath('data.payday', null);
+    }
+
     public function test_monthly_weekly_and_biweekly_bounds(): void
     {
         $user = $this->trackerUser(true, ['period_type' => 'monthly', 'period_start_day' => 1]);
