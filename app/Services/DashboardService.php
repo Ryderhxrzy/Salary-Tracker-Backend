@@ -46,15 +46,14 @@ class DashboardService
         $todayExpenses = $this->expenses->totalBetween($user, $todayDate, $todayDate);
 
         $period = $this->periods->currentPeriod($user);
-        $summary = $this->periods->summary($user, $period->start_date->toDateString(), $period->end_date->toDateString());
+        $summary = $this->periods->details($user, $period);
 
-        // Add provisional earnings of the current shift to the period totals for a live view.
-        if ($provisional && $configured && $provisional->salary_amount !== null) {
-            $summary['salary_earned'] = Money::round(($summary['salary_earned'] ?? 0) + (float) $provisional->salary_amount);
-            $summary['total_income'] = Money::round(($summary['total_income'] ?? 0) + (float) $provisional->salary_amount);
-            $summary['remaining'] = Money::round(($summary['remaining'] ?? 0) + (float) $provisional->salary_amount);
-            $summary['live'] = true;
-        }
+        // The previous cut-off stays on the dashboard until its pay date, then only in history.
+        $previous = $this->periods->periodFor($user, CarbonImmutable::parse($period->start_date->toDateString(), $tz)->subDay());
+        $payday = $previous->pay_date >= $todayDate ? [
+            'period' => new SalaryPeriodResource($previous),
+            'summary' => $this->periods->details($user, $previous),
+        ] : null;
 
         $schedule = $window ? [
             'start' => $window['start']->toIso8601String(),
@@ -86,7 +85,8 @@ class DashboardService
                 'regular_minutes' => $effective?->regular_minutes ?? 0,
                 'overtime_minutes' => $effective?->overtime_minutes ?? 0,
                 'late_minutes' => $effective?->late_minutes ?? 0,
-                'earned' => $configured ? Money::round($effective?->salary_amount) : null,
+                // Pay is only computed at time out; while on duty only the hours are live.
+                'earned' => $configured && ! $provisional ? Money::round($record?->salary_amount) : null,
                 'is_live' => $provisional !== null,
                 'expenses' => $todayExpenses,
             ],
@@ -94,6 +94,7 @@ class DashboardService
                 'period' => new SalaryPeriodResource($period),
                 'summary' => $summary,
             ],
+            'payday' => $payday,
             'salary' => $this->salary->rates($user),
             'notification' => $this->notifications->plan($user, $state),
         ];
