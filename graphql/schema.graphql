@@ -52,6 +52,8 @@ type Query {
   loansOverview(range: String, from: String, to: String): LoanOverview! @guard @field(resolver: "App\\GraphQL\\Queries\\ApiQueries@loansOverview")
   "Other income (side hustle, freelance, gifts…) in a range."
   incomes(range: String, from: String, to: String): IncomeList! @guard @field(resolver: "App\\GraphQL\\Queries\\ApiQueries@incomes")
+  "Salaries confirmed as received (\"Receive salary\"), newest first."
+  salaryReceipts(limit: Int): [SalaryReceipt!]! @guard @field(resolver: "App\\GraphQL\\Queries\\ApiQueries@salaryReceipts")
   "Money moved between two wallets in a range; `wallet` keeps only the transfers touching that wallet."
   walletTransfers(range: String, from: String, to: String, wallet: Int): WalletTransferList! @guard @field(resolver: "App\\GraphQL\\Queries\\ApiQueries@walletTransfers")
 }
@@ -357,6 +359,11 @@ type PeriodComputation {
   status: String!
   days_until_pay: Int!
   is_current: Boolean!
+  "True once the user tapped Receive salary for this cut-off."
+  received: Boolean!
+  received_at: String
+  received_amount: Float
+  receipt_id: Int
   tracked: Boolean!
   salary_configured: Boolean!
   basic_salary: Float
@@ -880,6 +887,29 @@ type DashboardToday {
   expenses: Float!
 }
 
+type SalaryReceipt {
+  id: Int!
+  period_from: String!
+  period_to: String!
+  pay_date: String!
+  amount: Float!
+  received_date: String!
+  wallet_id: Int
+  wallet: WalletRef
+  notes: String
+  created_at: String
+}
+
+"A finished cut-off waiting for Receive salary."
+type PendingSalary {
+  period: SalaryPeriod!
+  summary: PeriodComputation!
+  "Where the pay will be credited (the wallet that receives the salary)."
+  wallet: WalletRef
+  "Days since the pay day (negative = pay day still ahead)."
+  days_since_pay: Int!
+}
+
 type NextPayday {
   date: String!
   days_until: Int!
@@ -896,6 +926,8 @@ type Dashboard {
   period: PeriodWithSummary!
   payday: PeriodWithSummary
   next_payday: NextPayday!
+  "Finished cut-offs waiting for Receive salary, oldest first."
+  pending_salary: [PendingSalary!]!
   recent_attendance: [AttendanceRecord!]!
   money: MoneyOverview!
   salary: SalaryRates!
