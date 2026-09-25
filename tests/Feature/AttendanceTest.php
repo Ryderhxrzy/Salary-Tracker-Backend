@@ -129,6 +129,41 @@ class AttendanceTest extends TestCase
             ->assertJsonPath('data.attendance.salary_amount', 288.46);
     }
 
+    public function test_early_time_in_counts_from_schedule_start_and_overtime_needs_6pm(): void
+    {
+        $this->actingAsTracker();
+        $this->travelTo($this->manila('2026-09-26 20:00'));
+
+        // 7:44 AM - 5:01 PM: counted from 8:00, minus 12-1 break; out before 6 PM => no overtime.
+        $this->postJson('/api/attendance/manual', ['work_date' => '2026-09-11', 'time_in' => '07:44', 'time_out' => '17:01'])
+            ->assertCreated()
+            ->assertJsonPath('data.worked_minutes', 481)
+            ->assertJsonPath('data.regular_minutes', 480)
+            ->assertJsonPath('data.overtime_minutes', 0)
+            ->assertJsonPath('data.late_minutes', 0)
+            ->assertJsonPath('data.salary_amount', 769.23);
+
+        // 5:59 PM is still before the 6 PM overtime threshold.
+        $this->postJson('/api/attendance/manual', ['work_date' => '2026-09-12', 'time_in' => '07:45', 'time_out' => '17:59'])
+            ->assertCreated()
+            ->assertJsonPath('data.overtime_minutes', 0)
+            ->assertJsonPath('data.salary_amount', 769.23);
+
+        // 7:35 AM - 10:08 PM: 8:00-22:08 minus 1h break = 13h08m => 8h regular + 5h08m overtime (from 5 PM).
+        $this->postJson('/api/attendance/manual', ['work_date' => '2026-09-17', 'time_in' => '07:35', 'time_out' => '22:08'])
+            ->assertCreated()
+            ->assertJsonPath('data.worked_minutes', 788)
+            ->assertJsonPath('data.overtime_minutes', 308)
+            ->assertJsonPath('data.overtime_amount', 616.98)
+            ->assertJsonPath('data.salary_amount', 1386.21);
+
+        // Half day 7:43 AM - 12:01 PM: 8:00-12:00 counted, the minute after 12:00 is break.
+        $this->postJson('/api/attendance/manual', ['work_date' => '2026-09-18', 'time_in' => '07:43', 'time_out' => '12:01'])
+            ->assertCreated()
+            ->assertJsonPath('data.worked_minutes', 240)
+            ->assertJsonPath('data.salary_amount', 384.62);
+    }
+
     public function test_attendance_works_without_salary_configuration(): void
     {
         $this->actingAsTracker(withSalary: false);
@@ -197,16 +232,16 @@ class AttendanceTest extends TestCase
         $response = $this->postJson('/api/attendance/manual', [
             'work_date' => '2026-09-24',
             'time_in' => '08:00',
-            'time_out' => '17:30',
+            'time_out' => '18:00',
             'notes' => 'Forgot to time in',
         ]);
 
         $response->assertCreated()
             ->assertJsonPath('data.source', 'manual')
-            ->assertJsonPath('data.worked_minutes', 510)
+            ->assertJsonPath('data.worked_minutes', 540)
             ->assertJsonPath('data.regular_minutes', 480)
-            ->assertJsonPath('data.overtime_minutes', 30)
-            ->assertJsonPath('data.salary_amount', 829.33);
+            ->assertJsonPath('data.overtime_minutes', 60)
+            ->assertJsonPath('data.salary_amount', 889.42);
 
         $id = $response->json('data.id');
         $this->putJson("/api/attendance/{$id}", ['time_out' => '17:00'])
