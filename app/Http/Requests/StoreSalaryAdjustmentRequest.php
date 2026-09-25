@@ -21,6 +21,9 @@ class StoreSalaryAdjustmentRequest extends ApiFormRequest
             'amount' => [$required, 'numeric', 'min:0.01', 'max:99999999'],
             'description' => ['nullable', 'string', 'max:255'],
             'adjustment_date' => [$required, 'date_format:Y-m-d'],
+            // true = applied every payday from adjustment_date on (SSS, Pag-IBIG, allowance…)
+            'recurring' => ['nullable', 'boolean'],
+            'recurring_until' => ['nullable', 'date_format:Y-m-d', 'after_or_equal:adjustment_date'],
             'notes' => ['nullable', 'string', 'max:1000'],
         ];
     }
