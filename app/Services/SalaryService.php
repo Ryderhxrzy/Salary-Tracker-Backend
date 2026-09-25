@@ -115,11 +115,10 @@ class SalaryService
         if ($settings->salary_type === 'hourly') {
             $regular = (float) $settings->hourly_rate * ($record->regular_minutes / 60);
         } else {
+            // Day-based pay is earned per hour actually worked: daily rate / expected hours × hours.
             $daily = $this->dailyRate($user, $settings) ?? 0.0;
-            $regular = $daily;
-            if ($settings->prorate_undertime && $expectedMinutes > 0) {
-                $regular = $daily * min(1, $record->regular_minutes / $expectedMinutes);
-            }
+            $expected = $expectedMinutes > 0 ? $expectedMinutes : (int) round((float) $settings->expected_hours_per_day * 60);
+            $regular = $expected > 0 ? $daily * min(1, $record->regular_minutes / $expected) : 0.0;
         }
 
         $overtime = 0.0;
