@@ -21,6 +21,7 @@ class DashboardService
         protected WorkScheduleService $schedules,
         protected WalletService $wallets,
         protected SavingsService $savings,
+        protected LoanService $loans,
     ) {}
 
     public function build(User $user): array
@@ -121,6 +122,10 @@ class DashboardService
                 'remaining' => $summary['remaining'],
                 'total_saved' => Money::round($totalSaved),
                 'wallets' => WalletResource::collection($wallets),
+                'loans' => $this->loans->totals($user) + [
+                    'paid_this_period' => Money::round($summary['loan_payments'] + $summary['loan_deductions']),
+                    'received_this_period' => $summary['loan_received'],
+                ],
             ],
             'salary' => $this->salary->rates($user),
             'notification' => $this->notifications->plan($user, $state),
