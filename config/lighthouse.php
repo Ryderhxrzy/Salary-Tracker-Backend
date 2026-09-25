@@ -95,7 +95,8 @@ return [
         /*
          * File path to store the lighthouse schema.
          */
-        'path' => env('LIGHTHOUSE_SCHEMA_CACHE_PATH', base_path('bootstrap/cache/lighthouse-schema.php')),
+        // storage/ is writable on every deployment; bootstrap/cache often is not.
+        'path' => env('LIGHTHOUSE_SCHEMA_CACHE_PATH', storage_path('framework/cache/lighthouse-schema.php')),
     ],
 
     /*
