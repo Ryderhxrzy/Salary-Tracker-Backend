@@ -17,7 +17,7 @@ cmds = ["composer install --no-dev --prefer-dist --no-interaction --no-progress 
 cmds = [
   "php artisan package:discover --ansi",
   "php artisan view:cache",
-  "mkdir -p storage/framework/cache storage/framework/sessions storage/framework/views storage/logs bootstrap/cache",
+  "mkdir -p storage/framework/cache/lighthouse-queries storage/framework/sessions storage/framework/views storage/logs bootstrap/cache",
   "chmod -R ugo+rwX storage bootstrap/cache",
 ]
 
