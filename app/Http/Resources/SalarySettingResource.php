@@ -34,6 +34,7 @@ class SalarySettingResource extends JsonResource
             'period_anchor_date' => $this->period_anchor_date?->toDateString(),
             'custom_period_days' => $this->custom_period_days,
             'pay_delay_days' => $this->pay_delay_days,
+            'overtime_threshold_minutes' => $this->overtime_threshold_minutes,
         ];
     }
 }
