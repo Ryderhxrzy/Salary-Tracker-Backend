@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
-#[Fillable(['name', 'type', 'target_amount', 'current_amount', 'deadline', 'is_monthly', 'is_completed', 'notes'])]
+#[Fillable(['wallet_id', 'name', 'type', 'target_amount', 'current_amount', 'deadline', 'is_monthly', 'is_completed', 'notes'])]
 class SavingsGoal extends Model
 {
     use SoftDeletes;
@@ -34,6 +34,12 @@ class SavingsGoal extends Model
     public function transactions(): HasMany
     {
         return $this->hasMany(SavingsTransaction::class);
+    }
+
+    /** The wallet that keeps this goal's money. */
+    public function wallet(): BelongsTo
+    {
+        return $this->belongsTo(Wallet::class)->withTrashed();
     }
 
     public function progressPercent(): float
