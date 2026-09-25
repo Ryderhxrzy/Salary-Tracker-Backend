@@ -31,7 +31,8 @@ class GraphQLTest extends TestCase
         $this->withHeader('Authorization', "Bearer {$token}")
             ->graphQL('{ me { id email } wallets { name type receives_salary institution_id } }')
             ->assertJsonPath('data.me.id', $user->id)
-            ->assertJsonPath('data.wallets', []);
+            ->assertJsonPath('data.wallets.0.name', 'Cash')
+            ->assertJsonCount(1, 'data.wallets');
     }
 
     public function test_dashboard_attendance_and_money_flow(): void
@@ -78,6 +79,12 @@ class GraphQLTest extends TestCase
         $this->graphQL('{ expenses(range: "period") { total expenses { amount wallet { name } } pagination { total } } expenseSummary(range: "period") { total by_day } }')
             ->assertJsonPath('data.expenses.total', 120)
             ->assertJsonPath('data.expenseSummary.by_day.2026-09-25', 120);
+
+        $this->graphQL('mutation ($input: IncomeInput!) { createIncome(input: $input) { id amount type wallet { name } } }', ['input' => ['amount' => 250, 'income_date' => '2026-09-25', 'type' => 'side_hustle', 'source' => 'Grab']])
+            ->assertJsonPath('data.createIncome.wallet.name', 'Cash');
+        $this->graphQL('{ incomes(range: "period") { total incomes { source } } dashboard { money { other_income } } }')
+            ->assertJsonPath('data.incomes.total', 250)
+            ->assertJsonPath('data.dashboard.money.other_income', 250);
 
         $this->graphQL('{ statistics(range: "custom", from: "2026-09-25", to: "2026-09-25") { summary { days_worked } series { date salary } } }')
             ->assertJsonPath('data.statistics.summary.days_worked', 1)
