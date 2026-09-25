@@ -21,6 +21,7 @@ class WalletResource extends JsonResource
             'last4' => $this->last4,
             'holder_name' => $this->holder_name,
             'color' => $this->color,
+            'design' => $this->design,
             'opening_balance' => (float) $this->opening_balance,
             'balance_as_of' => $this->balance_as_of?->toDateString(),
             'receives_salary' => (bool) $this->receives_salary,
@@ -35,6 +36,9 @@ class WalletResource extends JsonResource
             'other_income' => $this->when(isset($this->other_income), fn () => (float) $this->other_income),
             'transfers_in' => $this->when(isset($this->transfers_in), fn () => (float) $this->transfers_in),
             'transfers_out' => $this->when(isset($this->transfers_out), fn () => (float) $this->transfers_out),
+            'goals_in' => $this->when(isset($this->goals_in), fn () => (float) $this->goals_in),
+            'goals_held' => $this->when(isset($this->goals_held), fn () => (float) $this->goals_held),
+            'available' => $this->when(isset($this->available), fn () => (float) $this->available),
         ];
     }
 }
