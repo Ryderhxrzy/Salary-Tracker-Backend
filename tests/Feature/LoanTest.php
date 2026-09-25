@@ -18,7 +18,7 @@ class LoanTest extends TestCase
 
         $wallets = collect($this->getJson('/api/wallets')->json('data'));
         $cash = $wallets->firstWhere('type', 'cash');
-        $this->putJson("/api/wallets/{$cash['id']}", ['opening_balance' => 5000])->assertOk();
+        $this->putJson("/api/wallets/{$cash['id']}", ['opening_balance' => 5000, 'balance_as_of' => '2026-09-01'])->assertOk();
 
         // SSS salary loan: ₱20,000 to repay, ₱1,000 per cut-off taken from the payslip.
         $sss = $this->postJson('/api/loans', [
@@ -111,7 +111,8 @@ class LoanTest extends TestCase
             ->assertJsonPath('data.loans.0.remaining_amount', 9500)
             ->assertJsonPath('data.loans.0.payments_count', 1)
             ->assertJsonPath('data.dashboard.money.loans.owed', 9500)
-            ->assertJsonPath('data.dashboard.money.loans.next_due.due_date', '2026-10-05');
+            // Paying the October installment early moves the next due date to November.
+            ->assertJsonPath('data.dashboard.money.loans.next_due.due_date', '2026-11-05');
 
         $this->graphQL('query ($id: Int!) { loan(id: $id) { name payments { amount payment_date } } }', ['id' => $loan['id']])
             ->assertJsonPath('data.loan.payments.0.amount', 500);
