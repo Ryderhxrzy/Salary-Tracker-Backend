@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
-#[Fillable(['expense_category_id', 'amount', 'description', 'expense_date', 'payment_method', 'notes'])]
+#[Fillable(['expense_category_id', 'wallet_id', 'amount', 'description', 'expense_date', 'payment_method', 'notes'])]
 class Expense extends Model
 {
     use SoftDeletes;
@@ -30,5 +30,11 @@ class Expense extends Model
     public function category(): BelongsTo
     {
         return $this->belongsTo(ExpenseCategory::class, 'expense_category_id');
+    }
+
+    /** The wallet (cash, GCash, bank...) the expense was paid from. */
+    public function wallet(): BelongsTo
+    {
+        return $this->belongsTo(Wallet::class);
     }
 }

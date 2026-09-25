@@ -11,6 +11,8 @@ use Illuminate\Support\Collection;
 
 class ExpenseService
 {
+    public function __construct(protected WalletService $wallets) {}
+
     public function ensureDefaultCategories(User $user): Collection
     {
         if ($user->expenseCategories()->exists()) {
@@ -32,7 +34,7 @@ class ExpenseService
      */
     public function list(User $user, array $filters = []): LengthAwarePaginator
     {
-        $query = $user->expenses()->with('category')->orderByDesc('expense_date')->orderByDesc('id');
+        $query = $user->expenses()->with(['category', 'wallet'])->orderByDesc('expense_date')->orderByDesc('id');
 
         if (! empty($filters['from'])) {
             $query->where('expense_date', '>=', $filters['from']);
@@ -53,16 +55,36 @@ class ExpenseService
 
     public function create(User $user, array $data): Expense
     {
-        $expense = $user->expenses()->create($data);
+        $expense = $user->expenses()->create($this->resolveWallet($user, $data));
 
-        return $expense->load('category');
+        return $expense->load(['category', 'wallet']);
     }
 
     public function update(Expense $expense, array $data): Expense
     {
-        $expense->fill($data)->save();
+        $expense->fill($this->resolveWallet($expense->user, $data, $expense))->save();
 
-        return $expense->fresh('category');
+        return $expense->fresh(['category', 'wallet']);
+    }
+
+    /**
+     * Keep `wallet_id` and `payment_method` in agreement: a chosen wallet defines the
+     * method (GCash wallet => gcash); a method alone picks the matching wallet.
+     */
+    protected function resolveWallet(User $user, array $data, ?Expense $existing = null): array
+    {
+        if (! empty($data['wallet_id'])) {
+            $wallet = $user->wallets()->find($data['wallet_id']);
+            if ($wallet && ! array_key_exists('payment_method', $data)) {
+                $data['payment_method'] = $wallet->type;
+            }
+        } elseif (array_key_exists('payment_method', $data) || $existing === null) {
+            $method = $data['payment_method'] ?? $existing?->payment_method ?? 'cash';
+            $data['wallet_id'] = $this->wallets->forMethod($user, $method)?->id;
+            $data['payment_method'] = $method;
+        }
+
+        return $data;
     }
 
     public function delete(Expense $expense): void

@@ -13,21 +13,27 @@ class WorkScheduleService
 {
     /**
      * Create the default Monday-Saturday schedule for a user that has none yet.
+     * The week is loaded once per request and reused by every date lookup.
      *
      * @return Collection<int, WorkSchedule>
      */
     public function ensureDefaults(User $user): Collection
     {
-        if ($user->workSchedules()->count() === 7) {
-            return $user->workSchedules()->get();
+        if ($user->relationLoaded('workSchedules') && $user->workSchedules->count() === 7) {
+            return $user->workSchedules;
         }
 
-        $defaults = config('salary_tracker.default_schedule');
-        foreach ($defaults as $day => $values) {
-            $user->workSchedules()->firstOrCreate(['day_of_week' => $day], $values);
+        $week = $user->workSchedules()->get();
+        if ($week->count() !== 7) {
+            $defaults = config('salary_tracker.default_schedule');
+            foreach ($defaults as $day => $values) {
+                $user->workSchedules()->firstOrCreate(['day_of_week' => $day], $values);
+            }
+            $week = $user->workSchedules()->get();
         }
+        $user->setRelation('workSchedules', $week);
 
-        return $user->workSchedules()->get();
+        return $week;
     }
 
     /**
@@ -37,6 +43,7 @@ class WorkScheduleService
      */
     public function update(User $user, array $days): Collection
     {
+        $user->unsetRelation('workSchedules');
         foreach ($days as $day) {
             $working = (bool) ($day['is_working_day'] ?? false);
             $user->workSchedules()->updateOrCreate(
@@ -50,14 +57,14 @@ class WorkScheduleService
             );
         }
 
-        return $user->workSchedules()->get();
+        $user->unsetRelation('workSchedules');
+
+        return $this->ensureDefaults($user);
     }
 
     public function forDate(User $user, CarbonInterface $dateInUserTz): ?WorkSchedule
     {
-        $this->ensureDefaults($user);
-
-        return $user->workSchedules()->where('day_of_week', $dateInUserTz->dayOfWeek)->first();
+        return $this->ensureDefaults($user)->firstWhere('day_of_week', $dateInUserTz->dayOfWeek);
     }
 
     public function leaveForDate(User $user, CarbonInterface $dateInUserTz): ?LeaveRecord
@@ -124,8 +131,7 @@ class WorkScheduleService
 
     public function workingDaysPerWeek(User $user): int
     {
-        $this->ensureDefaults($user);
-        $count = $user->workSchedules()->where('is_working_day', true)->count();
+        $count = $this->ensureDefaults($user)->where('is_working_day', true)->count();
 
         return max(1, $count);
     }

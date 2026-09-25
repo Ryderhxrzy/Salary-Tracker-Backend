@@ -12,8 +12,10 @@ use App\Http\Controllers\Api\ProfileController;
 use App\Http\Controllers\Api\SalaryAdjustmentController;
 use App\Http\Controllers\Api\SalaryController;
 use App\Http\Controllers\Api\SalarySettingController;
+use App\Http\Controllers\Api\SavingsController;
 use App\Http\Controllers\Api\SavingsGoalController;
 use App\Http\Controllers\Api\StatisticsController;
+use App\Http\Controllers\Api\WalletController;
 use App\Http\Controllers\Api\WorkScheduleController;
 use Illuminate\Support\Facades\Route;
 
@@ -74,6 +76,14 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('calendar', [StatisticsController::class, 'calendar']);
 
     Route::apiResource('goals', SavingsGoalController::class)->only(['index', 'store', 'update', 'destroy'])->parameters(['goals' => 'goal']);
+
+    // Savings (money set aside from the salary) and wallets (where the money is).
+    Route::get('savings', [SavingsController::class, 'index']);
+    Route::get('savings/transactions', [SavingsController::class, 'transactions']);
+    Route::post('savings/transactions', [SavingsController::class, 'store']);
+    Route::put('savings/transactions/{transaction}', [SavingsController::class, 'update'])->whereNumber('transaction');
+    Route::delete('savings/transactions/{transaction}', [SavingsController::class, 'destroy'])->whereNumber('transaction');
+    Route::apiResource('wallets', WalletController::class)->only(['index', 'store', 'update', 'destroy']);
 
     Route::post('device-tokens', [DeviceTokenController::class, 'store']);
     Route::delete('device-tokens/{deviceToken}', [DeviceTokenController::class, 'destroy']);

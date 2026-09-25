@@ -88,6 +88,16 @@ class User extends Authenticatable
         return $this->hasMany(SavingsGoal::class);
     }
 
+    public function wallets(): HasMany
+    {
+        return $this->hasMany(Wallet::class)->orderBy('sort_order')->orderBy('id');
+    }
+
+    public function savingsTransactions(): HasMany
+    {
+        return $this->hasMany(SavingsTransaction::class);
+    }
+
     public function deviceTokens(): HasMany
     {
         return $this->hasMany(DeviceToken::class);

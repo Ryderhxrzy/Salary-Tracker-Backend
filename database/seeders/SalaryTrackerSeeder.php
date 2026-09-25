@@ -6,6 +6,7 @@ use App\Models\User;
 use App\Services\ExpenseService;
 use App\Services\NotificationService;
 use App\Services\SalaryService;
+use App\Services\WalletService;
 use App\Services\WorkScheduleService;
 use Illuminate\Database\Seeder;
 
@@ -45,6 +46,7 @@ class SalaryTrackerSeeder extends Seeder
 
         app(NotificationService::class)->settings($user);
         app(ExpenseService::class)->ensureDefaultCategories($user);
+        app(WalletService::class)->ensureDefaults($user);
 
         $days = [];
         foreach (range(0, 6) as $day) {

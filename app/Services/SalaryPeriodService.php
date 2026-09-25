@@ -7,6 +7,7 @@ use App\Models\LeaveRecord;
 use App\Models\SalaryAdjustment;
 use App\Models\SalaryPeriod;
 use App\Models\SalarySetting;
+use App\Models\SavingsTransaction;
 use App\Models\User;
 use App\Support\Money;
 use Carbon\CarbonImmutable;
@@ -156,6 +157,47 @@ class SalaryPeriodService
     }
 
     /**
+     * Every cut-off whose pay day falls inside [$from, $to] and that is already paid
+     * (pay day before today). Used to credit received salaries to a wallet.
+     *
+     * @return array<int, SalaryPeriod>
+     */
+    public function periodsPaidBetween(User $user, string $from, string $to): array
+    {
+        $tz = $user->timezone();
+        $settings = $this->salary->settings($user);
+        $today = CarbonImmutable::now($tz)->toDateString();
+        // Start a little earlier: a cut-off paid after $from may have started before it.
+        $cursor = CarbonImmutable::parse($from, $tz)->subDays(45);
+        $limit = CarbonImmutable::parse($to, $tz);
+        $bounds = [];
+        for ($i = 0; $i < 120 && $cursor->lessThanOrEqualTo($limit); $i++) {
+            $b = $this->boundsFor($settings, $cursor);
+            $payDate = $this->payDateFor($settings, $b['end'])->toDateString();
+            if ($payDate >= $from && $payDate <= $to && $payDate < $today) {
+                $bounds[] = $b;
+            }
+            $cursor = $b['end']->addDay();
+        }
+        if ($bounds === []) {
+            return [];
+        }
+
+        // One query for the rows that already exist, then create the missing ones.
+        $existing = $user->salaryPeriods()->whereIn('start_date', array_map(fn ($b) => $b['start']->toDateString(), $bounds))->get()
+            ->keyBy(fn (SalaryPeriod $p) => $p->start_date->toDateString());
+        $periods = [];
+        foreach ($bounds as $b) {
+            $period = $existing->get($b['start']->toDateString()) ?? $this->periodForBounds($user, $settings, $b);
+            $period->pay_date = $this->payDateFor($settings, $b['end'])->toDateString();
+            $period->period_status = $this->statusFor($user, $period);
+            $periods[] = $period;
+        }
+
+        return $periods;
+    }
+
+    /**
      * @param  array{start: CarbonImmutable, end: CarbonImmutable, type: string}  $bounds
      */
     protected function periodForBounds(User $user, SalarySetting $settings, array $bounds): SalaryPeriod
@@ -222,6 +264,7 @@ class SalaryPeriodService
             ->keyBy(fn (AttendanceRecord $record) => $record->work_date->toDateString());
         $adjustments = $user->salaryAdjustments()->whereBetween('adjustment_date', [$from, $to])->get();
         $expenses = (float) $user->expenses()->whereBetween('expense_date', [$from, $to])->sum('amount');
+        $savings = $this->savingsBetween($user, $from, $to);
 
         $daily = $configured ? ($this->salary->dailyRate($user, $settings) ?? 0.0) : 0.0;
 
@@ -360,7 +403,10 @@ class SalaryPeriodService
             'deductions' => $deductions,
             'take_home' => $takeHome,
             'expenses' => Money::round($expenses),
-            'remaining' => Money::round($takeHome - $expenses),
+            // Money set aside into savings during the period (deposits − withdrawals).
+            'savings' => Money::round($savings),
+            // What is left of the salary to spend: take-home − expenses − savings.
+            'remaining' => Money::round($takeHome - $expenses - $savings),
             'progress' => $counts['working_days'] > 0 ? round($counts['days_done'] / $counts['working_days'], 4) : 0.0,
             'days' => $days,
         ];
@@ -379,6 +425,7 @@ class SalaryPeriodService
         $records = $user->attendanceRecords()->betweenDates($from, $to)->get();
         $adjustments = $user->salaryAdjustments()->whereBetween('adjustment_date', [$from, $to])->get();
         $expenses = (float) $user->expenses()->whereBetween('expense_date', [$from, $to])->sum('amount');
+        $savings = $this->savingsBetween($user, $from, $to);
 
         $regular = Money::sum($records->pluck('regular_amount'));
         $overtimePay = Money::sum($records->pluck('overtime_amount'));
@@ -391,7 +438,7 @@ class SalaryPeriodService
         $absenceDeduction = $configured ? (Money::round(($this->salary->dailyRate($user, $settings) ?? 0) * $absentDays) ?? 0.0) : 0.0;
 
         $totalIncome = Money::round($salary + $income) ?? 0.0;
-        $remaining = Money::round($totalIncome - $deductions - $expenses) ?? 0.0;
+        $remaining = Money::round($totalIncome - $deductions - $expenses - $savings) ?? 0.0;
 
         $worked = $records->filter(fn (AttendanceRecord $r) => in_array($r->status, [AttendanceRecord::STATUS_PRESENT, AttendanceRecord::STATUS_LATE], true));
 
@@ -407,7 +454,8 @@ class SalaryPeriodService
             'absence_deduction' => $absenceDeduction,
             'total_income' => $configured ? $totalIncome : $income,
             'expenses' => Money::round($expenses),
-            'remaining' => $configured ? $remaining : Money::round($income - $deductions - $expenses),
+            'savings' => Money::round($savings),
+            'remaining' => $configured ? $remaining : Money::round($income - $deductions - $expenses - $savings),
             'days_worked' => $worked->count(),
             'days_absent' => $absentDays,
             'days_late' => $records->where('status', AttendanceRecord::STATUS_LATE)->count(),
@@ -418,6 +466,15 @@ class SalaryPeriodService
             'overtime_minutes' => (int) $records->sum('overtime_minutes'),
             'late_minutes' => (int) $records->sum('late_minutes'),
         ];
+    }
+
+    /** Deposits − withdrawals dated inside the range. */
+    protected function savingsBetween(User $user, string $from, string $to): float
+    {
+        $rows = $user->savingsTransactions()->whereBetween('transaction_date', [$from, $to])
+            ->selectRaw('type, SUM(amount) as total')->groupBy('type')->pluck('total', 'type');
+
+        return (float) ($rows[SavingsTransaction::TYPE_DEPOSIT] ?? 0) - (float) ($rows[SavingsTransaction::TYPE_WITHDRAWAL] ?? 0);
     }
 
     public function nameFor(CarbonInterface $start, CarbonInterface $end): string

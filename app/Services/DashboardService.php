@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Http\Resources\AttendanceRecordResource;
 use App\Http\Resources\SalaryPeriodResource;
+use App\Http\Resources\WalletResource;
 use App\Models\User;
 use App\Models\WorkSchedule;
 use App\Support\Money;
@@ -18,6 +19,8 @@ class DashboardService
         protected ExpenseService $expenses,
         protected NotificationService $notifications,
         protected WorkScheduleService $schedules,
+        protected WalletService $wallets,
+        protected SavingsService $savings,
     ) {}
 
     public function build(User $user): array
@@ -61,6 +64,11 @@ class DashboardService
             : ['date' => $summary['pay_date'], 'days_until' => $summary['days_until_pay'], 'amount' => $summary['take_home'], 'period_name' => $period->name, 'kind' => 'current'];
 
         $recent = $user->attendanceRecords()->orderByDesc('work_date')->limit(5)->get();
+
+        // Where the money is: salary − expenses − savings for this cut-off, wallets and total savings.
+        $wallets = $this->wallets->withBalances($user);
+        $goals = $user->savingsGoals()->where('type', '!=', 'spending_limit')->get(['current_amount']);
+        $totalSaved = Money::sum($goals->pluck('current_amount')) + $this->savings->netBetween($user, null, null, withoutGoal: true);
 
         $schedule = $window ? [
             'start' => $window['start']->toIso8601String(),
@@ -106,6 +114,14 @@ class DashboardService
             'payday' => $payday,
             'next_payday' => $nextPayday,
             'recent_attendance' => AttendanceRecordResource::collection($recent),
+            'money' => [
+                'income' => $summary['take_home'],
+                'expenses' => $summary['expenses'],
+                'savings' => $summary['savings'],
+                'remaining' => $summary['remaining'],
+                'total_saved' => Money::round($totalSaved),
+                'wallets' => WalletResource::collection($wallets),
+            ],
             'salary' => $this->salary->rates($user),
             'notification' => $this->notifications->plan($user, $state),
         ];
