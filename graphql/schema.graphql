@@ -637,7 +637,17 @@ type SavingsTransactionList {
 type Wallet {
   id: Int!
   name: String!
+  "Payment method family: cash | gcash | maya | card | bank | other"
   type: String!
+  "bank | ewallet | cash | other"
+  category: String!
+  "Built-in institution key (bpi, bdo, gcash, maya…) or other"
+  institution_id: String
+  "savings | checking | payroll | debit | credit | ewallet | virtual_card | other"
+  account_type: String
+  last4: String
+  holder_name: String
+  color: String
   opening_balance: Float!
   balance_as_of: String
   receives_salary: Boolean!
@@ -967,6 +977,12 @@ input SavingsTransactionInput {
 input WalletInput {
   name: String
   type: String
+  category: String
+  institution_id: String
+  account_type: String
+  last4: String
+  holder_name: String
+  color: String
   opening_balance: Float
   balance_as_of: String
   receives_salary: Boolean
