@@ -69,7 +69,7 @@ class WorkScheduleService
      * Resolve the scheduled window for a calendar date (in the user's timezone).
      * Returns null on rest days. Overnight shifts end on the following day.
      *
-     * @return array{schedule: WorkSchedule, start: CarbonImmutable, end: CarbonImmutable, break_minutes: int, expected_minutes: int}|null
+     * @return array{schedule: WorkSchedule, start: CarbonImmutable, end: CarbonImmutable, break_minutes: int, break_start: ?CarbonImmutable, break_end: ?CarbonImmutable, expected_minutes: int}|null
      */
     public function windowForDate(User $user, CarbonInterface $dateInUserTz): ?array
     {
@@ -89,11 +89,23 @@ class WorkScheduleService
             $end = $end->addDay();
         }
 
+        // The break sits in the middle of the shift: 8:00-5:00 with 60 min => 12:00-1:00.
+        $breakMinutes = (int) $schedule->break_minutes;
+        $breakStart = null;
+        $breakEnd = null;
+        if ($breakMinutes > 0) {
+            $midpoint = $start->addMinutes(intdiv((int) $start->diffInMinutes($end), 2));
+            $breakStart = $midpoint->subMinutes(intdiv($breakMinutes, 2));
+            $breakEnd = $breakStart->addMinutes($breakMinutes);
+        }
+
         return [
             'schedule' => $schedule,
             'start' => $start,
             'end' => $end,
-            'break_minutes' => $schedule->break_minutes,
+            'break_minutes' => $breakMinutes,
+            'break_start' => $breakStart,
+            'break_end' => $breakEnd,
             'expected_minutes' => $schedule->expectedWorkMinutes(),
         ];
     }
