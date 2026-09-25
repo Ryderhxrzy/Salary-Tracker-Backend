@@ -380,6 +380,8 @@ class SalaryPeriodService
 
         $payDay = CarbonImmutable::parse($payDate, $tz);
         $daysUntilPay = (int) CarbonImmutable::parse($today, $tz)->diffInDays($payDay, false);
+        // "Receive salary": the user confirms the pay arrived; until then nothing is credited to a wallet.
+        $receipt = $user->salaryReceipts()->where('period_from', $from)->first(['id', 'amount', 'received_date']);
 
         return $counts + [
             'from' => $from,
@@ -418,6 +420,10 @@ class SalaryPeriodService
             // Left to spend: take-home + other income − expenses − savings − loan payments + repayments received.
             'remaining' => Money::round($takeHome + $otherIncome - $expenses - $savings - $loans['paid'] + $loans['received']),
             'progress' => $counts['working_days'] > 0 ? round($counts['days_done'] / $counts['working_days'], 4) : 0.0,
+            'received' => $receipt !== null,
+            'received_at' => $receipt?->received_date?->toDateString(),
+            'received_amount' => $receipt ? (float) $receipt->amount : null,
+            'receipt_id' => $receipt?->id,
             'days' => $days,
         ];
     }
