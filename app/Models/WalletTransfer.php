@@ -9,9 +9,9 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 
 /**
  * Money moved between two of the user's wallets (cash-in to GCash, ATM withdrawal…).
- * `amount` leaves the source and lands in the destination; `fee` leaves the source only.
+ * `amount` leaves the source and lands in the destination.
  */
-#[Fillable(['from_wallet_id', 'to_wallet_id', 'amount', 'fee', 'transfer_date', 'notes'])]
+#[Fillable(['from_wallet_id', 'to_wallet_id', 'amount', 'transfer_date', 'notes'])]
 class WalletTransfer extends Model
 {
     use SoftDeletes;
@@ -20,7 +20,6 @@ class WalletTransfer extends Model
     {
         return [
             'amount' => 'decimal:2',
-            'fee' => 'decimal:2',
             'transfer_date' => 'date:Y-m-d',
         ];
     }
@@ -38,11 +37,5 @@ class WalletTransfer extends Model
     public function toWallet(): BelongsTo
     {
         return $this->belongsTo(Wallet::class, 'to_wallet_id')->withTrashed();
-    }
-
-    /** Everything that leaves the source wallet. */
-    public function totalOut(): float
-    {
-        return (float) $this->amount + (float) $this->fee;
     }
 }
