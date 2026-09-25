@@ -10,6 +10,7 @@ use App\Models\WorkSchedule;
 use App\Support\MoneyVersion;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 
@@ -28,6 +29,11 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // Lighthouse keeps parsed GraphQL queries as PHP files; it does not create the folder itself.
+        if (in_array(config('lighthouse.query_cache.mode'), ['opcache', 'hybrid'], true)) {
+            File::ensureDirectoryExists((string) config('lighthouse.query_cache.opcache_path'));
+        }
+
         // Login / register: 10 attempts per minute per IP + email.
         RateLimiter::for('auth', function (Request $request) {
             return Limit::perMinute(10)->by(strtolower((string) $request->input('email')).'|'.$request->ip());
