@@ -26,7 +26,7 @@ class SavingsService
     {
         $from = $range['from'];
         $to = $range['to'];
-        $goals = $user->savingsGoals()->orderBy('is_completed')->orderByDesc('id')->get();
+        $goals = $user->savingsGoals()->with('wallet')->orderBy('is_completed')->orderByDesc('id')->get();
         $goalBalance = Money::sum($goals->where('type', '!=', 'spending_limit')->pluck('current_amount'));
         $loose = $this->netBetween($user, null, null, withoutGoal: true);
 
