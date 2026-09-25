@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\DeviceTokenController;
 use App\Http\Controllers\Api\ExpenseCategoryController;
 use App\Http\Controllers\Api\ExpenseController;
 use App\Http\Controllers\Api\LeaveRecordController;
+use App\Http\Controllers\Api\LoanController;
 use App\Http\Controllers\Api\NotificationSettingController;
 use App\Http\Controllers\Api\ProfileController;
 use App\Http\Controllers\Api\SalaryAdjustmentController;
@@ -84,6 +85,12 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::put('savings/transactions/{transaction}', [SavingsController::class, 'update'])->whereNumber('transaction');
     Route::delete('savings/transactions/{transaction}', [SavingsController::class, 'destroy'])->whereNumber('transaction');
     Route::apiResource('wallets', WalletController::class)->only(['index', 'store', 'update', 'destroy']);
+
+    // Loans: money owed (SSS, Pag-IBIG, company, personal) and money lent, with their payments.
+    Route::apiResource('loans', LoanController::class);
+    Route::post('loans/{loan}/payments', [LoanController::class, 'storePayment'])->whereNumber('loan');
+    Route::put('loan-payments/{payment}', [LoanController::class, 'updatePayment'])->whereNumber('payment');
+    Route::delete('loan-payments/{payment}', [LoanController::class, 'destroyPayment'])->whereNumber('payment');
 
     Route::post('device-tokens', [DeviceTokenController::class, 'store']);
     Route::delete('device-tokens/{deviceToken}', [DeviceTokenController::class, 'destroy']);
