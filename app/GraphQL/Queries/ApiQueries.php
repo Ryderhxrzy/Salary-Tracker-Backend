@@ -7,6 +7,7 @@ use App\GraphQL\Support\ResolvesApi;
 use App\Http\Resources\AttendanceRecordResource;
 use App\Http\Resources\ExpenseCategoryResource;
 use App\Http\Resources\ExpenseResource;
+use App\Http\Resources\IncomeResource;
 use App\Http\Resources\LeaveRecordResource;
 use App\Http\Resources\LoanResource;
 use App\Http\Resources\NotificationSettingResource;
@@ -19,6 +20,7 @@ use App\Http\Resources\SavingsTransactionResource;
 use App\Http\Resources\UserResource;
 use App\Http\Resources\WalletResource;
 use App\Http\Resources\WorkScheduleResource;
+use App\Models\SalaryAdjustment;
 use App\Models\SalaryPeriod;
 use App\Services\AttendanceService;
 use App\Services\DashboardService;
@@ -31,6 +33,7 @@ use App\Services\SavingsService;
 use App\Services\StatisticsService;
 use App\Services\WalletService;
 use App\Services\WorkScheduleService;
+use App\Support\Money;
 use Carbon\CarbonImmutable;
 use Nuwave\Lighthouse\Support\Contracts\GraphQLContext;
 
@@ -174,9 +177,14 @@ class ApiQueries
     {
         $user = $this->user($context);
         $range = $this->resolveRange($user, $args);
-        $items = $user->salaryAdjustments()->whereBetween('adjustment_date', [$range['from'], $range['to']])->orderByDesc('adjustment_date')->orderByDesc('id')->get();
+        $items = $user->salaryAdjustments()->forPeriod($range['from'], $range['to'])->orderByDesc('recurring')->orderByDesc('adjustment_date')->orderByDesc('id')->get();
 
-        return $this->normalize(['range' => $range, 'adjustments' => SalaryAdjustmentResource::collection($items)]);
+        return $this->normalize([
+            'range' => $range,
+            'income' => Money::sum($items->filter(fn (SalaryAdjustment $a) => $a->isIncome())->pluck('amount')),
+            'deductions' => Money::sum($items->filter(fn (SalaryAdjustment $a) => ! $a->isIncome())->pluck('amount')),
+            'adjustments' => SalaryAdjustmentResource::collection($items),
+        ]);
     }
 
     public function expenses($root, array $args, GraphQLContext $context): array
@@ -308,6 +316,15 @@ class ApiQueries
         $range = $this->resolveRange($user, $args);
 
         return $this->normalize($this->loans->overview($user, $range['from'], $range['to']));
+    }
+
+    public function incomes($root, array $args, GraphQLContext $context): array
+    {
+        $user = $this->user($context);
+        $range = $this->resolveRange($user, $args);
+        $items = $user->incomes()->with('wallet')->whereBetween('income_date', [$range['from'], $range['to']])->orderByDesc('income_date')->orderByDesc('id')->get();
+
+        return $this->normalize(['range' => $range, 'total' => Money::sum($items->pluck('amount')), 'incomes' => IncomeResource::collection($items)]);
     }
 
     /** ?range=today|week|month|period|custom&from&to, validated like RangeRequest. */
