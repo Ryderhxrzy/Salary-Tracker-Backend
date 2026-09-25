@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\AttendanceRecord;
 use App\Models\LeaveRecord;
+use App\Models\Loan;
 use App\Models\SalaryAdjustment;
 use App\Models\SalaryPeriod;
 use App\Models\SalarySetting;
@@ -265,6 +266,7 @@ class SalaryPeriodService
         $adjustments = $user->salaryAdjustments()->whereBetween('adjustment_date', [$from, $to])->get();
         $expenses = (float) $user->expenses()->whereBetween('expense_date', [$from, $to])->sum('amount');
         $savings = $this->savingsBetween($user, $from, $to);
+        $loans = $this->loansBetween($user, $from, $to);
 
         $daily = $configured ? ($this->salary->dailyRate($user, $settings) ?? 0.0) : 0.0;
 
@@ -372,7 +374,8 @@ class SalaryPeriodService
 
         $income = Money::sum($adjustments->filter(fn (SalaryAdjustment $a) => $a->isIncome())->pluck('amount'));
         $deductions = Money::sum($adjustments->filter(fn (SalaryAdjustment $a) => ! $a->isIncome())->pluck('amount'));
-        $takeHome = $configured ? Money::round(($salary ?? 0.0) + $income - $deductions) : Money::round($income - $deductions);
+        // Loan payments the employer takes from the payslip lower the take-home pay.
+        $takeHome = $configured ? Money::round(($salary ?? 0.0) + $income - $deductions - $loans['payroll']) : Money::round($income - $deductions - $loans['payroll']);
 
         $payDay = CarbonImmutable::parse($payDate, $tz);
         $daysUntilPay = (int) CarbonImmutable::parse($today, $tz)->diffInDays($payDay, false);
@@ -405,8 +408,12 @@ class SalaryPeriodService
             'expenses' => Money::round($expenses),
             // Money set aside into savings during the period (deposits − withdrawals).
             'savings' => Money::round($savings),
-            // What is left of the salary to spend: take-home − expenses − savings.
-            'remaining' => Money::round($takeHome - $expenses - $savings),
+            // Loan payments taken from the payslip (already inside take_home), paid from a wallet, and repayments received.
+            'loan_deductions' => $loans['payroll'],
+            'loan_payments' => $loans['paid'],
+            'loan_received' => $loans['received'],
+            // What is left of the salary to spend: take-home − expenses − savings − loan payments + repayments received.
+            'remaining' => Money::round($takeHome - $expenses - $savings - $loans['paid'] + $loans['received']),
             'progress' => $counts['working_days'] > 0 ? round($counts['days_done'] / $counts['working_days'], 4) : 0.0,
             'days' => $days,
         ];
@@ -426,6 +433,7 @@ class SalaryPeriodService
         $adjustments = $user->salaryAdjustments()->whereBetween('adjustment_date', [$from, $to])->get();
         $expenses = (float) $user->expenses()->whereBetween('expense_date', [$from, $to])->sum('amount');
         $savings = $this->savingsBetween($user, $from, $to);
+        $loans = $this->loansBetween($user, $from, $to);
 
         $regular = Money::sum($records->pluck('regular_amount'));
         $overtimePay = Money::sum($records->pluck('overtime_amount'));
@@ -438,7 +446,7 @@ class SalaryPeriodService
         $absenceDeduction = $configured ? (Money::round(($this->salary->dailyRate($user, $settings) ?? 0) * $absentDays) ?? 0.0) : 0.0;
 
         $totalIncome = Money::round($salary + $income) ?? 0.0;
-        $remaining = Money::round($totalIncome - $deductions - $expenses - $savings) ?? 0.0;
+        $remaining = Money::round($totalIncome - $deductions - $loans['payroll'] - $expenses - $savings - $loans['paid'] + $loans['received']) ?? 0.0;
 
         $worked = $records->filter(fn (AttendanceRecord $r) => in_array($r->status, [AttendanceRecord::STATUS_PRESENT, AttendanceRecord::STATUS_LATE], true));
 
@@ -455,7 +463,10 @@ class SalaryPeriodService
             'total_income' => $configured ? $totalIncome : $income,
             'expenses' => Money::round($expenses),
             'savings' => Money::round($savings),
-            'remaining' => $configured ? $remaining : Money::round($income - $deductions - $expenses - $savings),
+            'loan_deductions' => $loans['payroll'],
+            'loan_payments' => $loans['paid'],
+            'loan_received' => $loans['received'],
+            'remaining' => $configured ? $remaining : Money::round($income - $deductions - $loans['payroll'] - $expenses - $savings - $loans['paid'] + $loans['received']),
             'days_worked' => $worked->count(),
             'days_absent' => $absentDays,
             'days_late' => $records->where('status', AttendanceRecord::STATUS_LATE)->count(),
@@ -475,6 +486,36 @@ class SalaryPeriodService
             ->selectRaw('type, SUM(amount) as total')->groupBy('type')->pluck('total', 'type');
 
         return (float) ($rows[SavingsTransaction::TYPE_DEPOSIT] ?? 0) - (float) ($rows[SavingsTransaction::TYPE_WITHDRAWAL] ?? 0);
+    }
+
+    /**
+     * Loan payments dated inside the range: paid from a wallet, taken from the payslip, or received back.
+     *
+     * @return array{paid: float, payroll: float, received: float}
+     */
+    protected function loansBetween(User $user, string $from, string $to): array
+    {
+        $rows = $user->loanPayments()
+            ->join('loans', 'loans.id', '=', 'loan_payments.loan_id')
+            ->whereNull('loans.deleted_at')
+            ->whereBetween('loan_payments.payment_date', [$from, $to])
+            ->selectRaw('loans.type as loan_type, loan_payments.via_payroll as payroll, SUM(loan_payments.amount) as total')
+            ->groupBy('loans.type', 'loan_payments.via_payroll')
+            ->get();
+
+        $out = ['paid' => 0.0, 'payroll' => 0.0, 'received' => 0.0];
+        foreach ($rows as $row) {
+            $total = (float) $row->total;
+            if ($row->loan_type === Loan::TYPE_LENT) {
+                $out['received'] += $total;
+            } elseif ((bool) $row->payroll) {
+                $out['payroll'] += $total;
+            } else {
+                $out['paid'] += $total;
+            }
+        }
+
+        return array_map(fn ($v) => Money::round($v) ?? 0.0, $out);
     }
 
     public function nameFor(CarbonInterface $start, CarbonInterface $end): string
