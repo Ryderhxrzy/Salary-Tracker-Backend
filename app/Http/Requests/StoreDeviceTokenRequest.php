@@ -8,6 +8,11 @@ class StoreDeviceTokenRequest extends ApiFormRequest
 {
     public function rules(): array
     {
+        return static::rulesFor();
+    }
+
+    public static function rulesFor(): array
+    {
         return [
             'token' => ['required', 'string', 'max:255'],
             'platform' => ['nullable', Rule::in(['android', 'ios', 'web'])],
