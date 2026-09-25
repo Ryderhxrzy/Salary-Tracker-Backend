@@ -24,9 +24,10 @@ return new class extends Migration
             $table->decimal('overtime_hourly_rate', 12, 2)->nullable();
             $table->boolean('prorate_undertime')->default(false);
             $table->boolean('deduct_absences')->default(false);
-            // weekly | biweekly | monthly | custom
+            // weekly | biweekly | semi_monthly | monthly | custom
             $table->string('period_type', 20)->default('monthly');
-            $table->unsignedTinyInteger('period_start_day')->default(1);      // monthly: day of month 1-28
+            $table->unsignedTinyInteger('period_start_day')->default(1);      // monthly/semi_monthly: first cut-off start day (1-28)
+            $table->unsignedTinyInteger('period_second_day')->default(16);    // semi_monthly: second cut-off start day (2-28)
             $table->unsignedTinyInteger('period_start_weekday')->default(1);  // weekly: 0=Sun..6=Sat
             $table->date('period_anchor_date')->nullable();                   // biweekly/custom anchor
             $table->unsignedSmallInteger('custom_period_days')->default(15);
