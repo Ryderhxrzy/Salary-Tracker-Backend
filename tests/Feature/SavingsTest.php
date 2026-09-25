@@ -72,7 +72,7 @@ class SavingsTest extends TestCase
         $this->assertSame(2000.0 - 80 - 300 + 100, (float) collect($wallets)->firstWhere('id', $cash['id'])['balance']);
 
         // Reaching the target completes the goal; deleting the deposit reverts it.
-        $big = $this->postJson('/api/savings/transactions', ['amount' => 800, 'transaction_date' => '2026-09-23', 'savings_goal_id' => $goal['id']])->assertCreated()->json('data');
+        $big = $this->postJson('/api/savings/transactions', ['amount' => 800, 'transaction_date' => '2026-09-23', 'savings_goal_id' => $goal['id'], 'wallet_id' => $cash['id']])->assertCreated()->json('data');
         $this->getJson('/api/goals')->assertOk()->assertJsonPath('data.0.is_completed', true);
         $this->deleteJson("/api/savings/transactions/{$big['id']}")->assertOk();
         $this->getJson('/api/goals')->assertOk()->assertJsonPath('data.0.is_completed', false)->assertJsonPath('data.0.current_amount', 200);
@@ -168,5 +168,59 @@ class SavingsTest extends TestCase
 
         $this->deleteJson("/api/wallets/{$created['id']}")->assertOk();
         $this->assertCount(1, $this->getJson('/api/wallets')->json('data'));
+    }
+
+    public function test_goals_are_kept_in_a_wallet(): void
+    {
+        $this->actingAsTracker();
+        $this->travelTo($this->manila('2026-09-22 12:00'));
+        $cash = $this->getJson('/api/wallets')->assertOk()->json('data.0');
+        $this->putJson("/api/wallets/{$cash['id']}", ['opening_balance' => 1000])->assertOk();
+        $bank = $this->postJson('/api/wallets', ['name' => 'MariBank', 'type' => 'bank', 'category' => 'bank', 'institution_id' => 'seabank', 'opening_balance' => 500])->assertCreated()->json('data');
+
+        // Savings always come from an account; a goal lives in one.
+        $this->postJson('/api/savings/transactions', ['amount' => 100, 'transaction_date' => '2026-09-22'])->assertStatus(422)->assertJsonValidationErrors(['wallet_id']);
+        $this->postJson('/api/goals', ['name' => 'X', 'target_amount' => 10, 'wallet_id' => 999999])->assertStatus(422);
+        $goal = $this->postJson('/api/goals', ['name' => 'Laptop', 'target_amount' => 5000, 'wallet_id' => $bank['id']])->assertCreated()->assertJsonPath('data.wallet_id', $bank['id'])->json('data');
+        $this->getJson('/api/goals')->assertOk()->assertJsonPath('data.0.wallet.name', 'MariBank');
+
+        // ₱300 from cash into the goal: cash loses it, MariBank holds it, reserved for the goal.
+        $this->postJson('/api/savings/transactions', ['amount' => 300, 'transaction_date' => '2026-09-22', 'savings_goal_id' => $goal['id'], 'wallet_id' => $cash['id']])->assertCreated();
+        $wallets = collect($this->getJson('/api/wallets')->assertOk()->json('data'));
+        $this->assertSame(700.0, (float) $wallets->firstWhere('id', $cash['id'])['balance']);
+        $bankNow = $wallets->firstWhere('id', $bank['id']);
+        $this->assertSame(800.0, (float) $bankNow['balance']);
+        $this->assertSame(300.0, (float) $bankNow['goals_in']);
+        $this->assertSame(300.0, (float) $bankNow['goals_held']);
+        $this->assertSame(500.0, (float) $bankNow['available']);
+
+        // Saving from MariBank itself keeps its balance; only the reserved part grows.
+        $this->postJson('/api/savings/transactions', ['amount' => 50, 'transaction_date' => '2026-09-23', 'savings_goal_id' => $goal['id'], 'wallet_id' => $bank['id']])->assertCreated();
+        $bankNow = collect($this->getJson('/api/wallets')->json('data'))->firstWhere('id', $bank['id']);
+        $this->assertSame(800.0, (float) $bankNow['balance']);
+        $this->assertSame(350.0, (float) $bankNow['goals_held']);
+        $this->assertSame(450.0, (float) $bankNow['available']);
+
+        // Withdrawing ₱100 of the goal back to cash: cash gains it, MariBank lets it go.
+        $this->postJson('/api/savings/transactions', ['type' => 'withdrawal', 'amount' => 100, 'transaction_date' => '2026-09-23', 'savings_goal_id' => $goal['id'], 'wallet_id' => $cash['id']])->assertCreated();
+        $wallets = collect($this->getJson('/api/wallets')->json('data'));
+        $this->assertSame(800.0, (float) $wallets->firstWhere('id', $cash['id'])['balance']);
+        $bankNow = $wallets->firstWhere('id', $bank['id']);
+        $this->assertSame(700.0, (float) $bankNow['balance']);
+        $this->assertSame(250.0, (float) $bankNow['goals_held']);
+        $this->assertSame(450.0, (float) $bankNow['available']);
+
+        // An expense "not from a wallet" is tracked but charges no account.
+        $this->postJson('/api/expenses', ['amount' => 40, 'expense_date' => '2026-09-23', 'wallet_id' => null, 'payment_method' => 'other'])->assertCreated()->assertJsonPath('data.wallet_id', null);
+        $this->assertSame(800.0, (float) collect($this->getJson('/api/wallets')->json('data'))->firstWhere('id', $cash['id'])['balance']);
+        $this->assertSame(40.0, (float) $this->getJson('/api/salary')->assertOk()->json('data.summary.expenses'));
+
+        // A custom card design is stored with the wallet and validated.
+        $design = ['mode' => 'gradient', 'colors' => ['#0B3D91', '#1E5AC8', '#38BDF8'], 'direction' => 'down-right', 'pattern' => 'waves'];
+        $this->putJson("/api/wallets/{$bank['id']}", ['design' => $design])->assertOk()->assertJsonPath('data.design.pattern', 'waves');
+        $this->putJson("/api/wallets/{$bank['id']}", ['design' => ['mode' => 'solid', 'colors' => ['red'], 'direction' => 'down', 'pattern' => 'rings']])->assertStatus(422);
+        $this->putJson("/api/wallets/{$bank['id']}", ['design' => ['mode' => 'solid', 'colors' => ['#112233'], 'direction' => 'sideways', 'pattern' => 'rings']])->assertStatus(422);
+        $this->assertSame('waves', $this->postJson('/api/graphql', ['query' => "{ wallets { id design goals_held available } }"])->assertOk()->json('data.wallets.1.design.pattern'));
+        $this->putJson("/api/wallets/{$bank['id']}", ['design' => null])->assertOk()->assertJsonPath('data.design', null);
     }
 }

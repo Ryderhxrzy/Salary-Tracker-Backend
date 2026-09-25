@@ -23,7 +23,8 @@ use Illuminate\Support\Facades\Cache;
  *           − expenses paid from the wallet since then
  *           − savings deposited from the wallet + savings withdrawn into it
  *           + loans received into it − money lent from it − loan payments made from it + repayments received into it
- *           + transfers received from another wallet − transfers sent to another wallet (and their fees)
+ *           + transfers received from another wallet − transfers sent to another wallet
+ *           + money saved into goals this wallet keeps (goals_in); `available` = balance − goals kept here
  */
 class WalletService
 {
@@ -136,18 +137,17 @@ class WalletService
         if ($wallets->isEmpty()) {
             return $wallets;
         }
-        $byType = $wallets->groupBy('type')->map(fn (Collection $group) => $group->sortBy('sort_order')->first());
-        $default = $wallets->firstWhere('is_default', true) ?? $wallets->first();
         $earliest = $wallets->min(fn (Wallet $w) => $w->balance_as_of->toDateString());
 
-        // Expenses: those without a wallet fall back to the wallet of their payment method.
+        // Expenses: only those paid from a wallet lower it ("not from a wallet" is tracked, not charged).
         $spent = [];
         $user->expenses()
             ->where('expense_date', '>=', $earliest)
-            ->selectRaw('wallet_id, payment_method, expense_date, amount')
+            ->whereNotNull('wallet_id')
+            ->selectRaw('wallet_id, expense_date, amount')
             ->get()
-            ->each(function ($row) use (&$spent, $wallets, $byType, $default) {
-                $wallet = ($row->wallet_id ? $wallets->firstWhere('id', $row->wallet_id) : null) ?? $byType->get($row->payment_method) ?? $default;
+            ->each(function ($row) use (&$spent, $wallets) {
+                $wallet = $wallets->firstWhere('id', $row->wallet_id);
                 if ($wallet && $row->expense_date->toDateString() >= $wallet->balance_as_of->toDateString()) {
                     $spent[$wallet->id] = ($spent[$wallet->id] ?? 0.0) + (float) $row->amount;
                 }
@@ -192,16 +192,32 @@ class WalletService
                 }
             });
 
-        // Transfers between the user's own wallets: the amount moves, the fee leaves the source.
+        // Money saved for a goal sits in the wallet that keeps the goal (deposits land there, withdrawals leave it).
+        $goalWallets = $user->savingsGoals()->whereNotNull('wallet_id')->pluck('wallet_id', 'id');
+        $goalsIn = [];
+        if ($goalWallets->isNotEmpty()) {
+            $user->savingsTransactions()->where('transaction_date', '>=', $earliest)->whereIn('savings_goal_id', $goalWallets->keys())
+                ->get(['savings_goal_id', 'type', 'transaction_date', 'amount'])
+                ->each(function (SavingsTransaction $row) use (&$goalsIn, $wallets, $goalWallets) {
+                    $wallet = $wallets->firstWhere('id', $goalWallets[$row->savings_goal_id]);
+                    if ($wallet && $row->transaction_date->toDateString() >= $wallet->balance_as_of->toDateString()) {
+                        $goalsIn[$wallet->id] = ($goalsIn[$wallet->id] ?? 0.0) + $row->signedAmount();
+                    }
+                });
+        }
+        $goalsHeld = $user->savingsGoals()->whereNotNull('wallet_id')->where('type', '!=', 'spending_limit')->get(['wallet_id', 'current_amount'])
+            ->groupBy('wallet_id')->map(fn (Collection $group) => (float) $group->sum('current_amount'));
+
+        // Transfers between the user's own wallets: the amount moves from one to the other.
         $transfersIn = [];
         $transfersOut = [];
-        $user->walletTransfers()->where('transfer_date', '>=', $earliest)->get(['from_wallet_id', 'to_wallet_id', 'transfer_date', 'amount', 'fee'])
+        $user->walletTransfers()->where('transfer_date', '>=', $earliest)->get(['from_wallet_id', 'to_wallet_id', 'transfer_date', 'amount'])
             ->each(function (WalletTransfer $transfer) use (&$transfersIn, &$transfersOut, $wallets) {
                 $date = $transfer->transfer_date->toDateString();
                 $from = $wallets->firstWhere('id', $transfer->from_wallet_id);
                 $to = $wallets->firstWhere('id', $transfer->to_wallet_id);
                 if ($from && $date >= $from->balance_as_of->toDateString()) {
-                    $transfersOut[$from->id] = ($transfersOut[$from->id] ?? 0.0) + $transfer->totalOut();
+                    $transfersOut[$from->id] = ($transfersOut[$from->id] ?? 0.0) + (float) $transfer->amount;
                 }
                 if ($to && $date >= $to->balance_as_of->toDateString()) {
                     $transfersIn[$to->id] = ($transfersIn[$to->id] ?? 0.0) + (float) $transfer->amount;
@@ -217,7 +233,10 @@ class WalletService
             $wallet->other_income = Money::round($income[$wallet->id] ?? 0.0);
             $wallet->transfers_in = Money::round($transfersIn[$wallet->id] ?? 0.0);
             $wallet->transfers_out = Money::round($transfersOut[$wallet->id] ?? 0.0);
-            $wallet->balance = Money::round((float) $wallet->opening_balance + $salary + $wallet->other_income - $wallet->spent - $wallet->saved + $wallet->loans + $wallet->transfers_in - $wallet->transfers_out);
+            $wallet->goals_in = Money::round($goalsIn[$wallet->id] ?? 0.0);
+            $wallet->goals_held = Money::round((float) ($goalsHeld[$wallet->id] ?? 0.0));
+            $wallet->balance = Money::round((float) $wallet->opening_balance + $salary + $wallet->other_income - $wallet->spent - $wallet->saved + $wallet->goals_in + $wallet->loans + $wallet->transfers_in - $wallet->transfers_out);
+            $wallet->available = Money::round($wallet->balance - $wallet->goals_held);
         }
 
         return $wallets;

@@ -622,6 +622,9 @@ type SavingsGoal {
   is_monthly: Boolean!
   is_completed: Boolean!
   notes: String
+  "The wallet that keeps this goal's money."
+  wallet_id: Int
+  wallet: WalletRef
 }
 
 type GoalRef {
@@ -676,6 +679,14 @@ type Wallet {
   other_income: Float
   transfers_in: Float
   transfers_out: Float
+  "Net money that landed here because this wallet keeps goals."
+  goals_in: Float
+  "Sum of the goals kept in this wallet."
+  goals_held: Float
+  "balance − goals_held"
+  available: Float
+  "Card look chosen by the user: {mode, colors[], direction, pattern}; null = institution look."
+  design: JSON
 }
 
 type WalletTransfer {
@@ -685,8 +696,6 @@ type WalletTransfer {
   from_wallet: WalletRef
   to_wallet: WalletRef
   amount: Float!
-  "Charged on top of the amount; leaves the source wallet only."
-  fee: Float!
   transfer_date: String!
   notes: String
   created_at: String
@@ -695,7 +704,6 @@ type WalletTransfer {
 type WalletTransferList {
   range: RangeInfo!
   total: Float!
-  fees: Float!
   transfers: [WalletTransfer!]!
 }
 
