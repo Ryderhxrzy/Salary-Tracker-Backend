@@ -108,6 +108,11 @@ class User extends Authenticatable
         return $this->hasMany(LoanPayment::class);
     }
 
+    public function incomes(): HasMany
+    {
+        return $this->hasMany(Income::class);
+    }
+
     public function deviceTokens(): HasMany
     {
         return $this->hasMany(DeviceToken::class);
