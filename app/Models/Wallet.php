@@ -12,7 +12,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * A place where money sits: cash on hand, GCash, Maya, a card or a bank account.
  * Balances are computed (opening balance + salary received − expenses − savings).
  */
-#[Fillable(['name', 'type', 'category', 'institution_id', 'account_type', 'last4', 'holder_name', 'color', 'opening_balance', 'balance_as_of', 'receives_salary', 'is_default', 'sort_order'])]
+#[Fillable(['name', 'type', 'category', 'institution_id', 'account_type', 'last4', 'holder_name', 'color', 'design', 'opening_balance', 'balance_as_of', 'receives_salary', 'is_default', 'sort_order'])]
 class Wallet extends Model
 {
     use SoftDeletes;
@@ -23,9 +23,16 @@ class Wallet extends Model
 
     public const ACCOUNT_TYPES = ['savings', 'checking', 'payroll', 'debit', 'credit', 'ewallet', 'virtual_card', 'other'];
 
+    public const DESIGN_MODES = ['solid', 'gradient'];
+
+    public const DESIGN_DIRECTIONS = ['right', 'left', 'down', 'up', 'down-right', 'down-left', 'up-right', 'up-left'];
+
+    public const DESIGN_PATTERNS = ['rings', 'orbit', 'dots', 'stripes', 'waves', 'grid', 'none'];
+
     protected function casts(): array
     {
         return [
+            'design' => 'array',
             'opening_balance' => 'decimal:2',
             'balance_as_of' => 'date:Y-m-d',
             'receives_salary' => 'boolean',
