@@ -8,11 +8,21 @@ use App\Models\User;
 use App\Support\Money;
 
 /**
- * Rate resolution and pay computation. Never invents a salary: every method
- * returns null when the user has not configured one.
+ * Rate resolution and per-day pay computation. Never invents a salary: every
+ * method returns null when the user has not configured one.
+ *
+ * All rates derive from one monthly equivalent, so a basic salary per cut-off,
+ * a monthly salary or a daily rate always agree with each other:
+ *
+ *   basic ₱10,000 per semi-monthly cut-off  =>  ₱20,000 / month
+ *   daily  = 20,000 / (6 working days × 52 / 12 = 26)  =  ₱769.23
+ *   hourly = 769.23 / 8 = ₱96.15, overtime = hourly × 1.25 (or a custom rate)
  */
 class SalaryService
 {
+    /** Salary types paid as a fixed amount per pay period regardless of how many working days it has. */
+    public const FIXED_TYPES = ['per_period', 'weekly', 'biweekly', 'monthly'];
+
     public function __construct(protected WorkScheduleService $schedules) {}
 
     public function settings(User $user): SalarySetting
@@ -34,9 +44,31 @@ class SalaryService
     }
 
     /**
-     * Effective hourly rate derived from whichever salary type is configured.
+     * How many pay periods there are in a month for the configured period type.
      */
-    public function hourlyRate(User $user, ?SalarySetting $settings = null): ?float
+    public function periodsPerMonth(SalarySetting $settings): float
+    {
+        return match ($settings->period_type) {
+            'weekly' => 52 / 12,
+            'biweekly' => 26 / 12,
+            'semi_monthly' => 2.0,
+            'custom' => (365.25 / max(1, (int) $settings->custom_period_days)) / 12,
+            default => 1.0,
+        };
+    }
+
+    /**
+     * Working days in an average month (6-day week => 26).
+     */
+    public function workingDaysPerMonth(User $user): float
+    {
+        return $this->schedules->workingDaysPerWeek($user) * 52 / 12;
+    }
+
+    /**
+     * The configured salary expressed per month.
+     */
+    public function monthlyEquivalent(User $user, ?SalarySetting $settings = null): ?float
     {
         $settings ??= $this->settings($user);
         if (! $settings->isConfigured()) {
@@ -44,13 +76,17 @@ class SalaryService
         }
 
         $hours = max(0.01, (float) $settings->expected_hours_per_day);
-        if ($settings->salary_type === 'hourly') {
-            return (float) $settings->hourly_rate;
-        }
+        $daysPerMonth = $this->workingDaysPerMonth($user);
 
-        $daily = $this->dailyRate($user, $settings);
-
-        return $daily === null ? null : $daily / $hours;
+        return match ($settings->salary_type) {
+            'per_period' => (float) $settings->basic_salary * $this->periodsPerMonth($settings),
+            'daily' => (float) $settings->daily_rate * $daysPerMonth,
+            'hourly' => (float) $settings->hourly_rate * $hours * $daysPerMonth,
+            'weekly' => (float) $settings->weekly_rate * 52 / 12,
+            'biweekly' => (float) $settings->biweekly_rate * 26 / 12,
+            'monthly' => (float) $settings->monthly_rate,
+            default => null,
+        };
     }
 
     /**
@@ -63,17 +99,36 @@ class SalaryService
             return null;
         }
 
-        $wdpw = $this->schedules->workingDaysPerWeek($user);
+        // Time-based types are already a daily amount; avoid rounding through the monthly figure.
         $hours = max(0.01, (float) $settings->expected_hours_per_day);
+        if ($settings->salary_type === 'daily') {
+            return (float) $settings->daily_rate;
+        }
+        if ($settings->salary_type === 'hourly') {
+            return (float) $settings->hourly_rate * $hours;
+        }
 
-        return match ($settings->salary_type) {
-            'daily' => (float) $settings->daily_rate,
-            'hourly' => (float) $settings->hourly_rate * $hours,
-            'weekly' => (float) $settings->weekly_rate / $wdpw,
-            'biweekly' => (float) $settings->biweekly_rate / ($wdpw * 2),
-            'monthly' => (float) $settings->monthly_rate / ($wdpw * 52 / 12),
-            default => null,
-        };
+        $monthly = $this->monthlyEquivalent($user, $settings);
+
+        return $monthly === null ? null : $monthly / $this->workingDaysPerMonth($user);
+    }
+
+    /**
+     * Effective hourly rate derived from whichever salary type is configured.
+     */
+    public function hourlyRate(User $user, ?SalarySetting $settings = null): ?float
+    {
+        $settings ??= $this->settings($user);
+        if (! $settings->isConfigured()) {
+            return null;
+        }
+        if ($settings->salary_type === 'hourly') {
+            return (float) $settings->hourly_rate;
+        }
+
+        $daily = $this->dailyRate($user, $settings);
+
+        return $daily === null ? null : $daily / max(0.01, (float) $settings->expected_hours_per_day);
     }
 
     public function overtimeHourlyRate(User $user, ?SalarySetting $settings = null): ?float
@@ -91,6 +146,30 @@ class SalaryService
     }
 
     /**
+     * Basic pay of one pay period before any deduction or overtime.
+     *
+     * Fixed types pay the same amount every period (₱10,000 per cut-off whether it
+     * has 13 or 14 working days). Time-based types (daily, hourly) are the daily
+     * rate times the working days scheduled in that period.
+     */
+    public function basicForPeriod(User $user, int $workingDays, ?SalarySetting $settings = null): ?float
+    {
+        $settings ??= $this->settings($user);
+        if (! $settings->isConfigured()) {
+            return null;
+        }
+
+        if ($settings->salary_type === 'per_period') {
+            return Money::round($settings->basic_salary);
+        }
+        if (in_array($settings->salary_type, self::FIXED_TYPES, true)) {
+            return Money::round(($this->monthlyEquivalent($user, $settings) ?? 0.0) / $this->periodsPerMonth($settings));
+        }
+
+        return Money::round(($this->dailyRate($user, $settings) ?? 0.0) * $workingDays);
+    }
+
+    /**
      * Compute pay for an attendance record given its minutes.
      *
      * @return array{regular_amount: ?float, overtime_amount: ?float, salary_amount: ?float}
@@ -104,7 +183,7 @@ class SalaryService
             return $none;
         }
 
-        // Only days actually worked earn pay (leave/absent/rest are handled by summaries).
+        // Only days actually worked earn pay (leave/absent/rest are handled by period totals).
         if ($record->time_in === null || $record->worked_minutes <= 0) {
             if (! in_array($record->status, [AttendanceRecord::STATUS_PRESENT, AttendanceRecord::STATUS_LATE], true)) {
                 return $none;
@@ -139,15 +218,19 @@ class SalaryService
     public function rates(User $user): array
     {
         $settings = $this->settings($user);
+        $standardDays = (int) round($this->workingDaysPerMonth($user) / $this->periodsPerMonth($settings));
 
         return [
             'configured' => $settings->isConfigured(),
             'salary_type' => $settings->salary_type,
+            'basic_per_period' => $this->basicForPeriod($user, $standardDays, $settings),
+            'monthly_equivalent' => Money::round($this->monthlyEquivalent($user, $settings)),
             'daily_rate' => Money::round($this->dailyRate($user, $settings)),
             'hourly_rate' => Money::round($this->hourlyRate($user, $settings)),
             'overtime_hourly_rate' => Money::round($this->overtimeHourlyRate($user, $settings)),
             'expected_hours_per_day' => (float) $settings->expected_hours_per_day,
             'overtime_enabled' => (bool) $settings->overtime_enabled,
+            'overtime_threshold_minutes' => (int) ($settings->overtime_threshold_minutes ?? 60),
         ];
     }
 }
