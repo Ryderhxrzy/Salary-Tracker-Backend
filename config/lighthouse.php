@@ -225,11 +225,14 @@ return [
     */
 
     'security' => [
-        'max_query_complexity' => GraphQL\Validator\Rules\QueryComplexity::DISABLED,
-        'max_query_depth' => GraphQL\Validator\Rules\QueryDepth::DISABLED,
+        // Plain integers instead of GraphQL...::CONSTANTS: config files are loaded before Laravel's
+        // exception handler exists, so autoloading a vendor class here would turn any problem
+        // into a blank 500 on every route. The values are identical to the library constants.
+        'max_query_complexity' => 0, // GraphQL\Validator\Rules\QueryComplexity::DISABLED
+        'max_query_depth' => 0, // GraphQL\Validator\Rules\QueryDepth::DISABLED
         'disable_introspection' => (bool) env('LIGHTHOUSE_SECURITY_DISABLE_INTROSPECTION', false)
-            ? GraphQL\Validator\Rules\DisableIntrospection::ENABLED
-            : GraphQL\Validator\Rules\DisableIntrospection::DISABLED,
+            ? 1  // GraphQL\Validator\Rules\DisableIntrospection::ENABLED
+            : 0, // GraphQL\Validator\Rules\DisableIntrospection::DISABLED
     ],
 
     /*
@@ -285,7 +288,9 @@ return [
     */
 
     // Only leak internal messages / traces while the app itself is in debug mode.
-    'debug' => env('LIGHTHOUSE_DEBUG', env('APP_DEBUG', false) ? GraphQL\Error\DebugFlag::INCLUDE_DEBUG_MESSAGE | GraphQL\Error\DebugFlag::INCLUDE_TRACE : GraphQL\Error\DebugFlag::NONE),
+    // Plain integers instead of GraphQL\Error\DebugFlag constants (see the note under `security`):
+    //   3 = INCLUDE_DEBUG_MESSAGE | INCLUDE_TRACE, 0 = NONE.
+    'debug' => (int) env('LIGHTHOUSE_DEBUG', env('APP_DEBUG', false) ? 3 : 0),
 
     /*
     |--------------------------------------------------------------------------
