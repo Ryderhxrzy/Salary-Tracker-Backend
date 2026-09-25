@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 #[Fillable([
-    'salary_type', 'daily_rate', 'hourly_rate', 'weekly_rate', 'biweekly_rate', 'monthly_rate',
+    'salary_type', 'basic_salary', 'daily_rate', 'hourly_rate', 'weekly_rate', 'biweekly_rate', 'monthly_rate',
     'expected_hours_per_day', 'overtime_enabled', 'overtime_multiplier', 'overtime_hourly_rate',
     'prorate_undertime', 'deduct_absences',
     'period_type', 'period_start_day', 'period_second_day', 'period_start_weekday', 'period_anchor_date', 'custom_period_days',
@@ -15,13 +15,15 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 ])]
 class SalarySetting extends Model
 {
-    public const SALARY_TYPES = ['daily', 'hourly', 'weekly', 'biweekly', 'monthly'];
+    /** per_period = a fixed basic salary every payday (e.g. ₱10,000 per semi-monthly cut-off). */
+    public const SALARY_TYPES = ['per_period', 'daily', 'hourly', 'weekly', 'biweekly', 'monthly'];
 
     public const PERIOD_TYPES = ['weekly', 'biweekly', 'semi_monthly', 'monthly', 'custom'];
 
     protected function casts(): array
     {
         return [
+            'basic_salary' => 'decimal:2',
             'daily_rate' => 'decimal:2',
             'hourly_rate' => 'decimal:2',
             'weekly_rate' => 'decimal:2',
@@ -59,6 +61,7 @@ class SalarySetting extends Model
     public function rateForType(): ?float
     {
         $value = match ($this->salary_type) {
+            'per_period' => $this->basic_salary,
             'daily' => $this->daily_rate,
             'hourly' => $this->hourly_rate,
             'weekly' => $this->weekly_rate,
