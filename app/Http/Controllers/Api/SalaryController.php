@@ -33,7 +33,7 @@ class SalaryController extends Controller
             'settings' => new SalarySettingResource($this->salary->settings($user)),
             'rates' => $this->salary->rates($user),
             'period' => new SalaryPeriodResource($period),
-            'summary' => $this->periods->summary($user, $period->start_date->toDateString(), $period->end_date->toDateString()),
+            'summary' => $this->periods->details($user, $period),
         ]);
     }
 
@@ -45,7 +45,7 @@ class SalaryController extends Controller
         $user = $request->user();
         $count = min(36, max(1, (int) $request->input('count', 12)));
         $periods = collect($this->periods->recentPeriods($user, $count))->map(function (SalaryPeriod $period) use ($user) {
-            $period->summary = $this->periods->summary($user, $period->start_date->toDateString(), $period->end_date->toDateString());
+            $period->summary = $this->periods->details($user, $period);
 
             return $period;
         });
