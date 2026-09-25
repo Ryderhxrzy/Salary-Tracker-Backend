@@ -78,6 +78,10 @@ class ExpenseService
             if ($wallet && ! array_key_exists('payment_method', $data)) {
                 $data['payment_method'] = $wallet->type;
             }
+        } elseif (array_key_exists('wallet_id', $data)) {
+            // Explicit null: not paid from any account, only tracked as an expense.
+            $data['wallet_id'] = null;
+            $data['payment_method'] = $data['payment_method'] ?? $existing?->payment_method ?? 'other';
         } elseif (array_key_exists('payment_method', $data) || $existing === null) {
             $method = $data['payment_method'] ?? $existing?->payment_method ?? 'cash';
             $data['wallet_id'] = $this->wallets->forMethod($user, $method)?->id;
