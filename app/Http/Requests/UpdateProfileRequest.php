@@ -9,6 +9,11 @@ class UpdateProfileRequest extends ApiFormRequest
 {
     public function rules(): array
     {
+        return static::rulesFor();
+    }
+
+    public static function rulesFor(): array
+    {
         return [
             'full_name' => ['nullable', 'string', 'max:150'],
             'nickname' => ['nullable', 'string', 'max:60'],
