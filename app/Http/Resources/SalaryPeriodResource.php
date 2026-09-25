@@ -17,6 +17,7 @@ class SalaryPeriodResource extends JsonResource
             'period_type' => $this->period_type,
             'start_date' => $this->start_date?->toDateString(),
             'end_date' => $this->end_date?->toDateString(),
+            'pay_date' => $this->pay_date,
             'status' => $this->status,
             'summary' => $this->when(isset($this->summary), fn () => $this->summary),
         ];
