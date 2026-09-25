@@ -78,47 +78,82 @@ class SavingsTest extends TestCase
         $this->getJson('/api/goals')->assertOk()->assertJsonPath('data.0.is_completed', false)->assertJsonPath('data.0.current_amount', 200);
     }
 
-    public function test_salary_is_credited_to_the_salary_wallet_once_paid(): void
+    public function test_salary_is_credited_when_received_into_the_salary_wallet(): void
     {
         $this->actingAsTracker(true, ['salary_type' => 'per_period', 'basic_salary' => 10000]);
 
-        // The default Cash account (from Sep 1) receives the salary; work the whole Sep 11-25 cut-off (paid on the 30th).
+        // The default Cash account receives the salary; work the whole Sep 11-25 cut-off (paid on the 30th).
         $this->travelTo($this->manila('2026-09-01 09:00'));
-        $wallets = $this->getJson('/api/wallets')->assertOk()->json('data');
-        $cash = $wallets[0];
-
+        $cash = $this->getJson('/api/wallets')->assertOk()->json('data.0');
         foreach (['11', '12', '14', '15', '16', '17', '18', '19', '21', '22', '23', '24', '25'] as $day) {
             $this->postJson('/api/attendance/manual', ['work_date' => "2026-09-{$day}", 'time_in' => '08:00', 'time_out' => '17:00'])->assertCreated();
         }
 
-        // Before payday nothing is credited yet.
+        // While the cut-off runs nothing waits to be received and it cannot be received yet.
+        $this->travelTo($this->manila('2026-09-20 09:00'));
+        $this->assertCount(0, $this->getJson('/api/dashboard')->assertOk()->json('data.pending_salary'));
+        $this->postJson('/api/salary-receipts', ['period_from' => '2026-09-11', 'period_to' => '2026-09-25'])->assertStatus(422);
+
+        // Once it ends it waits for "Receive salary" — before and after its pay day — and nothing is credited yet.
         $this->travelTo($this->manila('2026-09-28 09:00'));
+        $pending = $this->getJson('/api/dashboard')->assertOk()->json('data.pending_salary');
+        $this->assertCount(1, $pending);
+        $this->assertSame('2026-09-11', $pending[0]['summary']['from']);
+        $this->assertSame(10000.0, (float) $pending[0]['summary']['take_home']);
+        $this->assertFalse($pending[0]['summary']['received']);
+        $this->assertSame('Cash', $pending[0]['wallet']['name']);
+        $this->assertSame(-2, $pending[0]['days_since_pay']);
+        $this->travelTo($this->manila('2026-10-03 09:00'));
+        $pending = $this->getJson('/api/dashboard')->json('data.pending_salary');
+        $this->assertCount(1, $pending);
+        $this->assertSame(3, $pending[0]['days_since_pay']);
         $this->assertSame(0.0, (float) collect($this->getJson('/api/wallets')->json('data'))->firstWhere('id', $cash['id'])['salary_received']);
 
-        // After payday the take-home pay of the cut-off lands in the cash wallet.
-        $this->travelTo($this->manila('2026-10-01 09:00'));
-        $wallet = collect($this->getJson('/api/wallets')->json('data'))->firstWhere('id', $cash['id']);
-        $this->assertSame(10000.0, (float) $wallet['salary_received']);
-        $this->assertSame(10000.0, (float) $wallet['balance']);
+        // Only real cut-offs can be received.
+        $this->postJson('/api/salary-receipts', ['period_from' => '2026-09-12', 'period_to' => '2026-09-25'])->assertStatus(422);
 
-        // Moving the salary to a new BPI payroll account moves the credit with it: only one account receives the salary.
+        // Move the salary to a new BPI payroll account, then receive: the take-home lands there.
         $bank = $this->postJson('/api/wallets', ['name' => 'BPI Payroll', 'type' => 'bank', 'category' => 'bank', 'institution_id' => 'bpi', 'account_type' => 'payroll', 'last4' => '1234', 'holder_name' => 'Juan', 'balance_as_of' => '2026-09-01'])
             ->assertCreated()->assertJsonPath('data.institution_id', 'bpi')->assertJsonPath('data.last4', '1234')->json('data');
         $this->putJson("/api/wallets/{$bank['id']}", ['receives_salary' => true])->assertOk();
+        $receipt = $this->postJson('/api/salary-receipts', ['period_from' => '2026-09-11', 'period_to' => '2026-09-25'])
+            ->assertCreated()->assertJsonPath('data.wallet.name', 'BPI Payroll')->assertJsonPath('data.received_date', '2026-10-03')->json('data');
+        $this->assertSame(10000.0, (float) $receipt['amount']);
+        $this->postJson('/api/salary-receipts', ['period_from' => '2026-09-11', 'period_to' => '2026-09-25'])->assertStatus(422); // not twice
         $wallets = collect($this->getJson('/api/wallets')->json('data'));
+        $this->assertSame(10000.0, (float) $wallets->firstWhere('id', $bank['id'])['salary_received']);
         $this->assertSame(10000.0, (float) $wallets->firstWhere('id', $bank['id'])['balance']);
         $this->assertSame(0.0, (float) $wallets->firstWhere('id', $cash['id'])['balance']);
         $this->assertFalse($wallets->firstWhere('id', $cash['id'])['receives_salary']);
         $this->assertSame(1, $wallets->where('receives_salary', true)->count());
+        $this->assertCount(0, $this->getJson('/api/dashboard')->json('data.pending_salary'));
+        $gql = $this->postJson('/api/graphql', ['query' => '{ salaryReceipts { id amount period_from wallet { name } } salaryPeriods(count: 2) { start_date summary { received received_at receipt_id } } }'])->assertOk();
+        $this->assertSame('BPI Payroll', $gql->json('data.salaryReceipts.0.wallet.name'));
+        $this->assertTrue($gql->json('data.salaryPeriods.1.summary.received'));
+        $this->assertSame('2026-10-03', $gql->json('data.salaryPeriods.1.summary.received_at'));
+
+        // Two finished cut-offs wait together (oldest first) until each one is received; undo puts one back.
+        $this->travelTo($this->manila('2026-10-27 09:00'));
+        foreach (['09-28', '09-29', '09-30', '10-01', '10-02', '10-12', '10-13', '10-14'] as $day) {
+            $this->postJson('/api/attendance/manual', ['work_date' => "2026-{$day}", 'time_in' => '08:00', 'time_out' => '17:00'])->assertCreated();
+        }
+        $pending = $this->getJson('/api/dashboard')->json('data.pending_salary');
+        $this->assertSame(['2026-09-26', '2026-10-11'], array_column(array_column($pending, 'summary'), 'from'));
+        $second = $this->postJson('/api/salary-receipts', ['period_from' => '2026-09-26', 'period_to' => '2026-10-10'])->assertCreated()->json('data');
+        $this->assertSame(['2026-10-11'], array_column(array_column($this->getJson('/api/dashboard')->json('data.pending_salary'), 'summary'), 'from'));
+        $this->assertGreaterThan(10000.0, (float) collect($this->getJson('/api/wallets')->json('data'))->firstWhere('id', $bank['id'])['salary_received']);
+        $this->deleteJson("/api/salary-receipts/{$second['id']}")->assertOk();
+        $this->assertSame(['2026-09-26', '2026-10-11'], array_column(array_column($this->getJson('/api/dashboard')->json('data.pending_salary'), 'summary'), 'from'));
+        $this->assertSame(10000.0, (float) collect($this->getJson('/api/wallets')->json('data'))->firstWhere('id', $bank['id'])['salary_received']);
 
         // Side-hustle income lands in the account it was received into and adds to "left to spend".
-        $this->postJson('/api/incomes', ['amount' => 1500, 'income_date' => '2026-09-28', 'type' => 'freelance', 'source' => 'Logo design', 'wallet_id' => $bank['id']])
+        $this->postJson('/api/incomes', ['amount' => 1500, 'income_date' => '2026-10-27', 'type' => 'freelance', 'source' => 'Logo design', 'wallet_id' => $bank['id']])
             ->assertCreated()->assertJsonPath('data.wallet.name', 'BPI Payroll');
-        $this->postJson('/api/incomes', ['amount' => 0, 'income_date' => '2026-09-28'])->assertStatus(422);
+        $this->postJson('/api/incomes', ['amount' => 0, 'income_date' => '2026-10-27'])->assertStatus(422);
         $this->assertSame(11500.0, (float) collect($this->getJson('/api/wallets')->json('data'))->firstWhere('id', $bank['id'])['balance']);
-        $incomes = $this->getJson('/api/incomes?range=custom&from=2026-09-26&to=2026-10-10')->assertOk()->json('data');
+        $incomes = $this->getJson('/api/incomes?range=custom&from=2026-10-26&to=2026-11-10')->assertOk()->json('data');
         $this->assertSame(1500.0, (float) $incomes['total']);
-        $summary = $this->getJson('/api/salary/summary?range=custom&from=2026-09-26&to=2026-10-10')->assertOk()->json('data.summary');
+        $summary = $this->getJson('/api/salary/summary?range=custom&from=2026-10-26&to=2026-11-10')->assertOk()->json('data.summary');
         $this->assertSame(1500.0, (float) $summary['other_income']);
         $this->getJson('/api/dashboard')->assertOk()->assertJsonPath('data.money.other_income', 1500);
     }
