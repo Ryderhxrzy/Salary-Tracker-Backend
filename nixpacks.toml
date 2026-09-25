@@ -1,0 +1,40 @@
+# Nixpacks build for the Laravel API (Coolify / Railway / Dokploy).
+#
+# Why this file exists: the default PHP build leaves `bootstrap/cache` and
+# `storage` owned by root while php-fpm runs as an unprivileged user, so the app
+# cannot write its caches ("Permission denied" -> 500). It also has to install the
+# Composer packages from the committed composer.lock (nuwave/lighthouse for the
+# GraphQL API) and run the database migrations on every deploy.
+
+[phases.setup]
+nixPkgs = ["php83", "php83Packages.composer"]
+
+[phases.install]
+cmds = [
+  "composer install --no-dev --prefer-dist --no-interaction --no-progress --optimize-autoloader",
+]
+
+[phases.build]
+cmds = [
+  # Package manifest + compiled config/routes/views are generated once, at build time.
+  "php artisan package:discover --ansi",
+  "php artisan view:cache",
+  # Everything the app writes at runtime must be writable by the php-fpm user.
+  "mkdir -p storage/framework/cache storage/framework/sessions storage/framework/views storage/logs bootstrap/cache",
+  "chmod -R ugo+rwX storage bootstrap/cache",
+]
+
+[start]
+# Migrate, warm the GraphQL schema cache, then start php-fpm + nginx exactly like the
+# default PHP image does (falls back to `artisan serve` if the image layout differs).
+cmd = """
+php artisan migrate --force --no-interaction && \
+php artisan config:clear && \
+php artisan lighthouse:cache && \
+chmod -R ugo+rwX storage bootstrap/cache; \
+if [ -f /assets/scripts/prestart.pl ]; then \
+  perl /assets/scripts/prestart.pl /assets/nginx.template.conf /nginx.conf && (php-fpm -y /assets/php-fpm.conf & nginx -c /nginx.conf); \
+else \
+  php artisan serve --host=0.0.0.0 --port=${PORT:-80}; \
+fi
+"""
