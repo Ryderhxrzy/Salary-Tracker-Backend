@@ -23,6 +23,8 @@ class SavingsGoalResource extends JsonResource
             'is_monthly' => (bool) $this->is_monthly,
             'is_completed' => (bool) $this->is_completed,
             'notes' => $this->notes,
+            'wallet_id' => $this->wallet_id,
+            'wallet' => $this->whenLoaded('wallet', fn () => $this->wallet ? ['id' => $this->wallet->id, 'name' => $this->wallet->name, 'type' => $this->wallet->type] : null),
         ];
     }
 }
