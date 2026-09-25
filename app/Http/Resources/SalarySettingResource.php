@@ -33,6 +33,7 @@ class SalarySettingResource extends JsonResource
             'period_start_weekday' => $this->period_start_weekday,
             'period_anchor_date' => $this->period_anchor_date?->toDateString(),
             'custom_period_days' => $this->custom_period_days,
+            'pay_delay_days' => $this->pay_delay_days,
         ];
     }
 }
