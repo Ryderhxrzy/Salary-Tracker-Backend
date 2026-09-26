@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 #[Fillable([
     'full_name', 'nickname', 'position', 'company', 'employment_type',
-    'timezone', 'currency', 'late_grace_minutes',
+    'timezone', 'currency', 'late_grace_minutes', 'avatar_path',
 ])]
 class EmployeeProfile extends Model
 {
@@ -24,5 +24,11 @@ class EmployeeProfile extends Model
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
+    }
+
+    /** Absolute URL of the profile picture, built from the current request host so it works from the phone. */
+    public function avatarUrl(): ?string
+    {
+        return $this->avatar_path ? url('api/avatars/'.basename($this->avatar_path)) : null;
     }
 }
