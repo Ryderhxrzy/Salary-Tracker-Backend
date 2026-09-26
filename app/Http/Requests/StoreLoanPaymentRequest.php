@@ -19,7 +19,7 @@ class StoreLoanPaymentRequest extends ApiFormRequest
         return [
             'amount' => [$required, 'numeric', 'min:0.01', 'max:999999999'],
             'payment_date' => [$required, 'date_format:Y-m-d'],
-            'wallet_id' => ['nullable', 'integer', Rule::exists('wallets', 'id')->where('user_id', $user->id)->whereNull('deleted_at')],
+            'wallet_id' => ['nullable', 'integer', Rule::in(app(\App\Services\WalletSharingService::class)->accessibleWalletIds($user))],
             'via_payroll' => ['nullable', 'boolean'],
             'notes' => ['nullable', 'string', 'max:1000'],
         ];
