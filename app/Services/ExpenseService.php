@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Expense;
 use App\Models\ExpenseCategory;
 use App\Models\User;
+use App\Models\Wallet;
 use App\Support\Money;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
@@ -56,8 +57,12 @@ class ExpenseService
     public function create(User $user, array $data): Expense
     {
         $expense = $user->expenses()->create($this->resolveWallet($user, $data));
+        $expense->load(['category', 'wallet']);
+        if ($expense->wallet && $expense->wallet->is_shared) {
+            app(WalletSharingService::class)->announce($expense->wallet, $user, 'spent ₱'.number_format((float) $expense->amount, 2).($expense->description ? " on {$expense->description}" : '').'.');
+        }
 
-        return $expense->load(['category', 'wallet']);
+        return $expense;
     }
 
     public function update(Expense $expense, array $data): Expense
@@ -74,7 +79,7 @@ class ExpenseService
     protected function resolveWallet(User $user, array $data, ?Expense $existing = null): array
     {
         if (! empty($data['wallet_id'])) {
-            $wallet = $user->wallets()->find($data['wallet_id']);
+            $wallet = Wallet::query()->find($data['wallet_id']);
             if ($wallet && ! array_key_exists('payment_method', $data)) {
                 $data['payment_method'] = $wallet->type;
             }
