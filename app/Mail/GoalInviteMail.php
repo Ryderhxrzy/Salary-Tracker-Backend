@@ -32,7 +32,7 @@ class GoalInviteMail extends Mailable
                 'goalName' => $this->goal->name,
                 'target' => number_format((float) $this->goal->target_amount, 2),
                 'saved' => number_format((float) $this->goal->current_amount, 2),
-                'appLink' => 'salarytracker://goal-invites/'.$this->member->token,
+                'appLink' => 'tandem://goal-invites/'.$this->member->token,
                 'webLink' => url('/goal-invites/'.$this->member->token),
                 'email' => $this->member->email,
             ],
