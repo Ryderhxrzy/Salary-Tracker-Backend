@@ -91,6 +91,7 @@ class DashboardService
                 'full_name' => $user->profile?->full_name ?: $user->name,
                 'position' => $user->profile?->position,
                 'company' => $user->profile?->company,
+                'avatar_url' => $user->profile?->avatarUrl(),
             ],
             'today' => [
                 'date' => $todayDate,
