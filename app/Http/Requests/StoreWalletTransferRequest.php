@@ -17,7 +17,7 @@ class StoreWalletTransferRequest extends ApiFormRequest
     public static function rulesFor(User $user, bool $isUpdate = false): array
     {
         $required = $isUpdate ? 'sometimes' : 'required';
-        $owned = Rule::exists('wallets', 'id')->where('user_id', $user->id)->whereNull('deleted_at');
+        $owned = Rule::in(app(\App\Services\WalletSharingService::class)->accessibleWalletIds($user));
 
         return [
             'from_wallet_id' => [$required, 'integer', $owned],
