@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
-#[Fillable(['wallet_id', 'name', 'type', 'target_amount', 'current_amount', 'deadline', 'is_monthly', 'is_completed', 'notes'])]
+#[Fillable(['wallet_id', 'name', 'type', 'target_amount', 'current_amount', 'deadline', 'is_monthly', 'is_completed', 'notes', 'icon', 'design'])]
 class SavingsGoal extends Model
 {
     use SoftDeletes;
@@ -23,6 +23,7 @@ class SavingsGoal extends Model
             'deadline' => 'date:Y-m-d',
             'is_monthly' => 'boolean',
             'is_completed' => 'boolean',
+            'design' => 'array',
         ];
     }
 
