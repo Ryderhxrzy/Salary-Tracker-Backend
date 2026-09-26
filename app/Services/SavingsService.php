@@ -19,15 +19,16 @@ use Illuminate\Support\Facades\DB;
  */
 class SavingsService
 {
-    public function __construct(protected WalletService $wallets) {}
+    public function __construct(protected WalletService $wallets, protected GoalSharingService $sharing) {}
 
     /** @param  array{from: string, to: string, label?: string}  $range */
     public function overview(User $user, array $range): array
     {
         $from = $range['from'];
         $to = $range['to'];
-        $goals = $user->savingsGoals()->with('wallet')->orderBy('is_completed')->orderByDesc('id')->get();
-        $goalBalance = Money::sum($goals->where('type', '!=', 'spending_limit')->pluck('current_amount'));
+        $goals = $this->sharing->goalsFor($user)->orderBy('is_completed')->orderByDesc('savings_goals.id')->get();
+        // Own goals count in full; in someone else's shared goal only this user's own money counts.
+        $goalBalance = Money::sum($goals->where('type', '!=', 'spending_limit')->map(fn (SavingsGoal $g) => (int) $g->user_id === (int) $user->id ? (float) $g->current_amount : $g->contributionOf($user->id)));
         $loose = $this->netBetween($user, null, null, withoutGoal: true);
 
         $deposits = (float) $user->savingsTransactions()->where('type', SavingsTransaction::TYPE_DEPOSIT)->whereBetween('transaction_date', [$from, $to])->sum('amount');
@@ -73,6 +74,12 @@ class SavingsService
             /** @var SavingsTransaction $transaction */
             $transaction = $user->savingsTransactions()->create($data);
             $this->applyToGoal($transaction->savings_goal_id, $transaction->signedAmount());
+            if ($transaction->savings_goal_id && $transaction->isDeposit()) {
+                $goal = SavingsGoal::find($transaction->savings_goal_id);
+                if ($goal && $goal->is_shared) {
+                    $this->sharing->announceContribution($goal, $user, (float) $transaction->amount);
+                }
+            }
 
             return $transaction->load(['goal', 'wallet']);
         });
