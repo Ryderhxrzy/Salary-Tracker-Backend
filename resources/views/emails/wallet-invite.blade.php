@@ -1,7 +1,7 @@
 <x-mail::message>
 # An account was shared with you
 
-**{{ $inviterName }}** invited you to use the account **"{{ $walletName }}"** together in Salary Tracker.
+**{{ $inviterName }}** invited you to use the account **"{{ $walletName }}"** together in Tandem.
 
 Once you accept, the account shows up with your own cards. Expenses, savings and transfers you make from it count on the one shared balance, and everyone using it is told when money moves.
 

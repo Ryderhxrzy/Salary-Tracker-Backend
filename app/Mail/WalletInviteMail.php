@@ -30,7 +30,7 @@ class WalletInviteMail extends Mailable
             with: [
                 'inviterName' => $this->inviterName(),
                 'walletName' => $this->wallet->name,
-                'appLink' => 'salarytracker://wallet-invites/'.$this->member->token,
+                'appLink' => 'tandem://wallet-invites/'.$this->member->token,
                 'webLink' => url('/wallet-invites/'.$this->member->token),
                 'email' => $this->member->email,
             ],

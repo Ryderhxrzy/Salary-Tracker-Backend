@@ -1,7 +1,7 @@
 <x-mail::message>
 # You're invited to save together
 
-**{{ $inviterName }}** invited you to join the shared goal **"{{ $goalName }}"** in Salary Tracker.
+**{{ $inviterName }}** invited you to join the shared goal **"{{ $goalName }}"** in Tandem.
 
 - Target: ₱{{ $target }}
 - Saved so far: ₱{{ $saved }}

@@ -18,7 +18,7 @@
     <h1>{{ $name }}</h1>
     @if ($status === 'pending')
       <p><strong>{{ $inviterName }}</strong> invited <strong>{{ $email }}</strong> to {{ $kind === 'wallet' ? 'use this account together' : 'save together for this goal' }}.</p>
-      <p>Open the Salary Tracker app, sign in with that email, then go to <strong>Savings → Invitations</strong> and tap <strong>Accept</strong>.</p>
+      <p>Open the Tandem app, sign in with that email, then go to <strong>Savings → Invitations</strong> and tap <strong>Accept</strong>.</p>
       <a class="btn" href="{{ $appLink }}">Open the app</a>
     @elseif ($status === 'accepted')
       <p>This invitation was already accepted. Open the app to see it.</p>
