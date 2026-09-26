@@ -27,7 +27,11 @@ class Wallet extends Model
 
     public const DESIGN_DIRECTIONS = ['right', 'left', 'down', 'up', 'down-right', 'down-left', 'up-right', 'up-left'];
 
-    public const DESIGN_PATTERNS = ['rings', 'orbit', 'dots', 'stripes', 'waves', 'grid', 'none'];
+    public const DESIGN_PATTERNS = [
+        'rings', 'orbit', 'dots', 'stripes', 'waves', 'grid', 'none',
+        'bubbles', 'diagonal', 'chevron', 'diamonds', 'halftone', 'rays', 'mesh',
+        'squares', 'arcs', 'confetti', 'zigzag', 'crosses', 'blob', 'ribbon', 'stars', 'hearts', 'coins', 'leaves', 'sparkles',
+    ];
 
     protected function casts(): array
     {
