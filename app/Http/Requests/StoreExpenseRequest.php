@@ -28,7 +28,7 @@ class StoreExpenseRequest extends ApiFormRequest
             'payment_method' => ['nullable', Rule::in(Expense::PAYMENT_METHODS)],
             'wallet_id' => [
                 'nullable', 'integer',
-                Rule::exists('wallets', 'id')->where('user_id', $user->id)->whereNull('deleted_at'),
+                Rule::in(app(\App\Services\WalletSharingService::class)->accessibleWalletIds($user)),
             ],
             'notes' => ['nullable', 'string', 'max:1000'],
         ];
