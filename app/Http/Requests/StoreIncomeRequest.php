@@ -22,7 +22,7 @@ class StoreIncomeRequest extends ApiFormRequest
             'income_date' => [$required, 'date_format:Y-m-d'],
             'type' => ['nullable', Rule::in(Income::TYPES)],
             'source' => ['nullable', 'string', 'max:120'],
-            'wallet_id' => ['nullable', 'integer', Rule::exists('wallets', 'id')->where('user_id', $user->id)->whereNull('deleted_at')],
+            'wallet_id' => ['nullable', 'integer', Rule::in(app(\App\Services\WalletSharingService::class)->accessibleWalletIds($user))],
             'notes' => ['nullable', 'string', 'max:1000'],
         ];
     }
