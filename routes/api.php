@@ -31,6 +31,9 @@ Route::prefix('auth')->middleware('throttle:auth')->group(function () {
     Route::post('login', [AuthController::class, 'login']);
 });
 
+// Profile pictures: random file names, so the URL itself is the secret (the app's image view sends no token).
+Route::get('avatars/{file}', [ProfileController::class, 'avatar'])->where('file', '[A-Za-z0-9_-]+\.(jpg|jpeg|png|webp)');
+
 // ---------------------------------------------------------------------------
 // Authenticated (Sanctum bearer tokens)
 // ---------------------------------------------------------------------------
@@ -43,6 +46,8 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::get('profile', [ProfileController::class, 'show']);
     Route::put('profile', [ProfileController::class, 'update']);
+    Route::post('profile/avatar', [ProfileController::class, 'storeAvatar']);
+    Route::delete('profile/avatar', [ProfileController::class, 'destroyAvatar']);
 
     Route::get('salary-settings', [SalarySettingController::class, 'show']);
     Route::put('salary-settings', [SalarySettingController::class, 'update']);
