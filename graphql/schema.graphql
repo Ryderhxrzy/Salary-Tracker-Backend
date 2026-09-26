@@ -631,6 +631,10 @@ type SavingsGoal {
   is_monthly: Boolean!
   is_completed: Boolean!
   notes: String
+  "Icon drawn on the goal card (MaterialCommunityIcons name); null = by type."
+  icon: String
+  "Card look chosen by the user: {mode, colors[], direction, pattern}; null = default look."
+  design: JSON
   "The wallet that keeps this goal's money."
   wallet_id: Int
   wallet: WalletRef
