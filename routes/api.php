@@ -1,16 +1,19 @@
 <?php
 
+use App\Http\Controllers\Api\AppNotificationController;
 use App\Http\Controllers\Api\AttendanceController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\DeviceTokenController;
 use App\Http\Controllers\Api\ExpenseCategoryController;
 use App\Http\Controllers\Api\ExpenseController;
+use App\Http\Controllers\Api\GoalMemberController;
 use App\Http\Controllers\Api\IncomeController;
 use App\Http\Controllers\Api\LeaveRecordController;
 use App\Http\Controllers\Api\LoanController;
 use App\Http\Controllers\Api\NotificationSettingController;
 use App\Http\Controllers\Api\ProfileController;
+use App\Http\Controllers\Api\RecurringExpenseController;
 use App\Http\Controllers\Api\SalaryAdjustmentController;
 use App\Http\Controllers\Api\SalaryController;
 use App\Http\Controllers\Api\SalaryReceiptController;
@@ -19,6 +22,7 @@ use App\Http\Controllers\Api\SavingsController;
 use App\Http\Controllers\Api\SavingsGoalController;
 use App\Http\Controllers\Api\StatisticsController;
 use App\Http\Controllers\Api\WalletController;
+use App\Http\Controllers\Api\WalletMemberController;
 use App\Http\Controllers\Api\WalletTransferController;
 use App\Http\Controllers\Api\WorkScheduleController;
 use Illuminate\Support\Facades\Route;
@@ -85,6 +89,28 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('calendar', [StatisticsController::class, 'calendar']);
 
     Route::apiResource('goals', SavingsGoalController::class)->only(['index', 'store', 'update', 'destroy'])->parameters(['goals' => 'goal']);
+    // Shared goals: invite by email, accept / decline, leave or remove.
+    Route::post('goals/{goal}/invites', [GoalMemberController::class, 'invite'])->whereNumber('goal');
+    Route::delete('goals/{goal}/members/{member}', [GoalMemberController::class, 'remove'])->whereNumber('goal')->whereNumber('member');
+    Route::get('goal-invites', [GoalMemberController::class, 'pending']);
+    Route::post('goal-invites/{member}/accept', [GoalMemberController::class, 'accept'])->whereNumber('member');
+    Route::post('goal-invites/{member}/decline', [GoalMemberController::class, 'decline'])->whereNumber('member');
+
+    // Recurring bills.
+    Route::apiResource('recurring-expenses', RecurringExpenseController::class)->only(['index', 'store', 'update', 'destroy'])->parameters(['recurring-expenses' => 'recurringExpense']);
+    Route::post('recurring-expenses/{recurringExpense}/pay-now', [RecurringExpenseController::class, 'payNow'])->whereNumber('recurringExpense');
+
+    // Shared accounts: invite by email, accept / decline, leave or remove.
+    Route::post('wallets/{wallet}/invites', [WalletMemberController::class, 'invite'])->whereNumber('wallet');
+    Route::delete('wallets/{wallet}/members/{member}', [WalletMemberController::class, 'remove'])->whereNumber('wallet')->whereNumber('member');
+    Route::get('wallet-invites', [WalletMemberController::class, 'pending']);
+    Route::post('wallet-invites/{member}/accept', [WalletMemberController::class, 'accept'])->whereNumber('member');
+    Route::post('wallet-invites/{member}/decline', [WalletMemberController::class, 'decline'])->whereNumber('member');
+
+    // In-app inbox.
+    Route::get('notifications', [AppNotificationController::class, 'index']);
+    Route::get('notifications/pending', [AppNotificationController::class, 'pending']);
+    Route::post('notifications/read', [AppNotificationController::class, 'read']);
 
     // Savings (money set aside from the salary) and wallets (where the money is).
     Route::get('savings', [SavingsController::class, 'index']);
