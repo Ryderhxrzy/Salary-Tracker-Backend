@@ -50,7 +50,10 @@ class SavingsTest extends TestCase
         $this->assertSame(300.0, (float) $overview['goals'][0]['current_amount']);
         $cashNow = collect($overview['wallets'])->firstWhere('id', $cash['id']);
         $gcashNow = collect($overview['wallets'])->firstWhere('id', $gcash['id']);
-        $this->assertSame(2000.0 - 80 - 300, (float) $cashNow['balance']);
+        // The goal keeps no account of its own, so the ₱300 never left cash: it is only set aside.
+        $this->assertSame(2000.0 - 80, (float) $cashNow['balance']);
+        $this->assertSame(300.0, (float) $cashNow['savings_held']);
+        $this->assertSame(2000.0 - 80 - 300, (float) $cashNow['available']);
         $this->assertSame(500.0 - 120, (float) $gcashNow['balance']);
 
         // The period computation subtracts expenses and savings from the take-home pay.
@@ -64,12 +67,15 @@ class SavingsTest extends TestCase
         $this->assertSame(300.0, (float) $dashboard['total_saved']);
         $this->assertCount(2, $dashboard['wallets']);
 
-        // Withdrawing ₱100 back into cash lowers the goal and raises the wallet.
+        // Withdrawing ₱100 back lowers the goal and frees the money again inside cash.
         $this->postJson('/api/savings/transactions', ['type' => 'withdrawal', 'amount' => 100, 'transaction_date' => '2026-09-23', 'savings_goal_id' => $goal['id'], 'wallet_id' => $cash['id']])
             ->assertCreated();
         $this->getJson('/api/goals')->assertOk()->assertJsonPath('data.0.current_amount', 200);
         $wallets = $this->getJson('/api/wallets')->assertOk()->json('data');
-        $this->assertSame(2000.0 - 80 - 300 + 100, (float) collect($wallets)->firstWhere('id', $cash['id'])['balance']);
+        $cashNow = collect($wallets)->firstWhere('id', $cash['id']);
+        $this->assertSame(2000.0 - 80, (float) $cashNow['balance']);
+        $this->assertSame(200.0, (float) $cashNow['savings_held']);
+        $this->assertSame(2000.0 - 80 - 200, (float) $cashNow['available']);
 
         // Reaching the target completes the goal; deleting the deposit reverts it.
         $big = $this->postJson('/api/savings/transactions', ['amount' => 800, 'transaction_date' => '2026-09-23', 'savings_goal_id' => $goal['id'], 'wallet_id' => $cash['id']])->assertCreated()->json('data');

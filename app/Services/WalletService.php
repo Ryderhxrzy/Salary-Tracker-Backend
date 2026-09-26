@@ -168,16 +168,29 @@ class WalletService
                 }
             });
 
+        // Savings only leave an account when they go to a goal kept somewhere else. Money set
+        // aside without a goal (or for a goal with no account of its own) stays where it is and
+        // is merely reserved: `stayIn` cancels the deduction below and becomes `savings_held`.
         $saved = [];
-        SavingsTransaction::query()->whereIn('wallet_id', $ids)
+        $stayIn = [];
+        $savingsRows = SavingsTransaction::query()->whereIn('wallet_id', $ids)
             ->where('transaction_date', '>=', $earliest)
-            ->get(['wallet_id', 'type', 'transaction_date', 'amount'])
-            ->each(function (SavingsTransaction $row) use (&$saved, $wallets) {
-                $wallet = $wallets->firstWhere('id', $row->wallet_id);
-                if ($wallet && $row->transaction_date->toDateString() >= $wallet->balance_as_of->toDateString()) {
-                    $saved[$wallet->id] = ($saved[$wallet->id] ?? 0.0) + $row->signedAmount();
-                }
-            });
+            ->get(['wallet_id', 'savings_goal_id', 'type', 'transaction_date', 'amount']);
+        $goalWalletOf = SavingsGoal::withTrashed()
+            ->whereIn('id', $savingsRows->pluck('savings_goal_id')->filter()->unique()->all())
+            ->pluck('wallet_id', 'id');
+        foreach ($savingsRows as $row) {
+            $wallet = $wallets->firstWhere('id', $row->wallet_id);
+            if (! $wallet || $row->transaction_date->toDateString() < $wallet->balance_as_of->toDateString()) {
+                continue;
+            }
+            $saved[$wallet->id] = ($saved[$wallet->id] ?? 0.0) + $row->signedAmount();
+            // A goal that keeps its money in an account is handled by `goals_in` / `goals_held`.
+            $keptIn = $row->savings_goal_id ? ($goalWalletOf[$row->savings_goal_id] ?? null) : null;
+            if ($keptIn === null) {
+                $stayIn[$wallet->id] = ($stayIn[$wallet->id] ?? 0.0) + $row->signedAmount();
+            }
+        }
 
         // Loans: the principal received (borrowed) or handed out (lent), then every payment.
         $loans = [];
@@ -239,8 +252,10 @@ class WalletService
             $wallet->transfers_out = Money::round($transfersOut[$wallet->id] ?? 0.0);
             $wallet->goals_in = Money::round($goalsIn[$wallet->id] ?? 0.0);
             $wallet->goals_held = Money::round((float) ($goalsHeld[$wallet->id] ?? 0.0));
-            $wallet->balance = Money::round((float) $wallet->opening_balance + $salary + $wallet->other_income - $wallet->spent - $wallet->saved + $wallet->goals_in + $wallet->loans + $wallet->transfers_in - $wallet->transfers_out);
-            $wallet->available = Money::round($wallet->balance - $wallet->goals_held);
+            $wallet->savings_held = Money::round(max(0.0, $stayIn[$wallet->id] ?? 0.0));
+            $wallet->balance = Money::round((float) $wallet->opening_balance + $salary + $wallet->other_income - $wallet->spent - $wallet->saved + $wallet->goals_in + ($stayIn[$wallet->id] ?? 0.0) + $wallet->loans + $wallet->transfers_in - $wallet->transfers_out);
+            // What is free to spend: the balance minus everything set aside inside this account.
+            $wallet->available = Money::round($wallet->balance - $wallet->goals_held - $wallet->savings_held);
         }
 
         return $wallets;

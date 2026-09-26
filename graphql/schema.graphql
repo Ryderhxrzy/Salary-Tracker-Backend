@@ -822,7 +822,9 @@ type Wallet {
   goals_in: Float
   "Sum of the goals kept in this wallet."
   goals_held: Float
-  "balance − goals_held"
+  "Savings set aside inside this account (no goal, or a goal with no account of its own)."
+  savings_held: Float
+  "balance − goals_held − savings_held"
   available: Float
   "Card look chosen by the user: {mode, colors[], direction, pattern}; null = institution look."
   design: JSON
