@@ -21,13 +21,17 @@ class StoreSavingsGoalRequest extends ApiFormRequest
         return [
             'name' => [$required, 'string', 'max:120'],
             'type' => ['nullable', Rule::in(SavingsGoal::TYPES)],
-            'wallet_id' => ['nullable', 'integer', Rule::exists('wallets', 'id')->where('user_id', $user->id)->whereNull('deleted_at')],
+            'wallet_id' => ['nullable', 'integer', Rule::in(app(\App\Services\WalletSharingService::class)->accessibleWalletIds($user))],
             'target_amount' => [$required, 'numeric', 'min:0.01', 'max:999999999'],
             'current_amount' => ['nullable', 'numeric', 'min:0', 'max:999999999'],
             'deadline' => ['nullable', 'date_format:Y-m-d'],
             'is_monthly' => ['nullable', 'boolean'],
             'is_completed' => ['nullable', 'boolean'],
             'notes' => ['nullable', 'string', 'max:1000'],
+            'is_shared' => ['nullable', 'boolean'],
+            // People to invite by email (the goal becomes shared).
+            'invite_emails' => ['nullable', 'array', 'max:20'],
+            'invite_emails.*' => ['email:rfc', 'max:190'],
             'icon' => ['nullable', 'string', 'max:60', 'regex:/^[a-z0-9-]+$/'],
             // Same shape as a wallet's card design.
             'design' => ['nullable', 'array'],
