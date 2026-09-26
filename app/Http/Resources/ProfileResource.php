@@ -20,6 +20,7 @@ class ProfileResource extends JsonResource
             'timezone' => $this->timezone,
             'currency' => $this->currency,
             'late_grace_minutes' => $this->late_grace_minutes,
+            'avatar_url' => $this->avatarUrl(),
         ];
     }
 }
