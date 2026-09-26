@@ -23,10 +23,15 @@ class DashboardService
         protected SavingsService $savings,
         protected LoanService $loans,
         protected SalaryReceiptService $receipts,
+        protected RecurringExpenseService $recurring,
+        protected AppNotificationService $inbox,
     ) {}
 
     public function build(User $user): array
     {
+        // Bills due today are recorded (or reminded about) before the numbers are computed.
+        $this->recurring->runDue($user);
+
         $user->loadMissing(['profile', 'salarySetting', 'notificationSetting']);
         $this->schedules->ensureDefaults($user);
         $this->expenses->ensureDefaultCategories($user);
@@ -86,6 +91,7 @@ class DashboardService
         return [
             'server_time' => $now->toIso8601String(),
             'timezone' => $tz,
+            'unread_notifications' => $this->inbox->unreadCount($user),
             'profile' => [
                 'name' => $user->profile?->nickname ?: ($user->profile?->full_name ?: $user->name),
                 'full_name' => $user->profile?->full_name ?: $user->name,
