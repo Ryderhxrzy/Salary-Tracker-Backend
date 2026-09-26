@@ -41,7 +41,15 @@ type Query {
   statistics(range: String, from: String, to: String): Statistics! @guard @field(resolver: "App\\GraphQL\\Queries\\ApiQueries@statistics")
   calendar(year: Int, month: Int): CalendarMonth! @guard @field(resolver: "App\\GraphQL\\Queries\\ApiQueries@calendar")
 
+  "Own goals plus the shared goals this user accepted."
   goals: [SavingsGoal!]! @guard @field(resolver: "App\\GraphQL\\Queries\\ApiQueries@goals")
+  "Invitations to shared goals waiting for this user."
+  goalInvites: [SavingsGoalMember!]! @guard @field(resolver: "App\\GraphQL\\Queries\\ApiQueries@goalInvites")
+  recurringExpenses: [RecurringExpense!]! @guard @field(resolver: "App\\GraphQL\\Queries\\ApiQueries@recurringExpenses")
+  "Invitations to shared accounts waiting for this user."
+  walletInvites: [WalletInvite!]! @guard @field(resolver: "App\\GraphQL\\Queries\\ApiQueries@walletInvites")
+  "The in-app inbox: invitations, bills paid, reminders."
+  notifications(limit: Int): NotificationInbox! @guard @field(resolver: "App\\GraphQL\\Queries\\ApiQueries@notifications")
   savings(range: String, from: String, to: String): SavingsOverview! @guard @field(resolver: "App\\GraphQL\\Queries\\ApiQueries@savings")
   savingsTransactions(range: String, from: String, to: String, goal_id: Int): SavingsTransactionList! @guard @field(resolver: "App\\GraphQL\\Queries\\ApiQueries@savingsTransactions")
   wallets: [Wallet!]! @guard @field(resolver: "App\\GraphQL\\Queries\\ApiQueries@wallets")
@@ -635,9 +643,127 @@ type SavingsGoal {
   icon: String
   "Card look chosen by the user: {mode, colors[], direction, pattern}; null = default look."
   design: JSON
+  is_shared: Boolean!
+  "Whether the signed-in user created this goal (members can only add money)."
+  is_owner: Boolean!
+  owner: GoalOwner
+  members: [GoalMember!]
+  "This user's own money in the goal (the whole balance for a personal goal)."
+  my_contribution: Float!
   "The wallet that keeps this goal's money."
   wallet_id: Int
   wallet: WalletRef
+}
+
+type GoalOwner {
+  id: Int!
+  name: String!
+}
+
+type GoalMember {
+  id: Int!
+  user_id: Int
+  email: String!
+  name: String
+  status: String!
+  contributed: Float!
+}
+
+type SavingsGoalMemberGoal {
+  id: Int!
+  name: String!
+  type: String!
+  target_amount: Float!
+  current_amount: Float!
+  owner_name: String
+}
+
+"An invitation to a shared goal (pending, accepted or declined)."
+type SavingsGoalMember {
+  id: Int!
+  goal_id: Int!
+  user_id: Int
+  email: String!
+  name: String
+  role: String!
+  status: String!
+  accepted_at: String
+  created_at: String
+  contributed: Float!
+  goal: SavingsGoalMemberGoal
+  invited_by_name: String
+}
+
+"A bill paid again and again: amount, schedule and the account it is taken from."
+type RecurringExpense {
+  id: Int!
+  description: String!
+  amount: Float!
+  category_id: Int
+  category: ExpenseCategory
+  wallet_id: Int
+  wallet: WalletRef
+  "weekly | monthly | semi_monthly | yearly"
+  frequency: String!
+  day_of_month: Int
+  second_day_of_month: Int
+  weekday: Int
+  month_of_year: Int
+  start_date: String!
+  next_date: String!
+  end_date: String
+  last_paid_date: String
+  auto_pay: Boolean!
+  remind: Boolean!
+  remind_days_before: Int!
+  is_active: Boolean!
+  notes: String
+}
+
+type AppNotification {
+  id: Int!
+  type: String!
+  title: String!
+  body: String!
+  data: JSON
+  is_read: Boolean!
+  created_at: String
+}
+
+type WalletMemberRef {
+  id: Int!
+  user_id: Int
+  email: String!
+  name: String
+  status: String!
+}
+
+type WalletInviteWallet {
+  id: Int!
+  name: String!
+  type: String!
+  institution_id: String
+  owner_name: String
+}
+
+"An invitation to a shared account (pending, accepted or declined)."
+type WalletInvite {
+  id: Int!
+  wallet_id: Int!
+  user_id: Int
+  email: String!
+  name: String
+  role: String!
+  status: String!
+  accepted_at: String
+  created_at: String
+  wallet: WalletInviteWallet
+  invited_by_name: String
+}
+
+type NotificationInbox {
+  unread: Int!
+  notifications: [AppNotification!]!
 }
 
 type GoalRef {
@@ -700,6 +826,11 @@ type Wallet {
   available: Float
   "Card look chosen by the user: {mode, colors[], direction, pattern}; null = institution look."
   design: JSON
+  is_shared: Boolean!
+  "Whether the signed-in user created this account (members can use it, not edit it)."
+  is_owner: Boolean!
+  owner: GoalOwner
+  members: [WalletMemberRef!]
 }
 
 type WalletTransfer {
@@ -929,6 +1060,8 @@ type Dashboard {
   server_time: String!
   timezone: String!
   profile: DashboardProfile!
+  "Unread rows in the in-app inbox."
+  unread_notifications: Int!
   today: DashboardToday!
   period: PeriodWithSummary!
   payday: PeriodWithSummary
