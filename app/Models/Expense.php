@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
-#[Fillable(['expense_category_id', 'wallet_id', 'amount', 'description', 'expense_date', 'payment_method', 'notes'])]
+#[Fillable(['expense_category_id', 'wallet_id', 'recurring_expense_id', 'amount', 'description', 'expense_date', 'payment_method', 'notes'])]
 class Expense extends Model
 {
     use SoftDeletes;
