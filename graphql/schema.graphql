@@ -149,6 +149,8 @@ type Profile {
   timezone: String!
   currency: String!
   late_grace_minutes: Int!
+  "Absolute URL of the profile picture, null when none was uploaded."
+  avatar_url: String
 }
 
 type SalarySettings {
@@ -852,6 +854,7 @@ type DashboardProfile {
   full_name: String!
   position: String
   company: String
+  avatar_url: String
 }
 
 type DashboardSchedule {
