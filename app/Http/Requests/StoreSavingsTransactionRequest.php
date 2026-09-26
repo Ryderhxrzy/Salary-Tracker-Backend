@@ -4,6 +4,7 @@ namespace App\Http\Requests;
 
 use App\Models\SavingsTransaction;
 use App\Models\User;
+use App\Services\GoalSharingService;
 use Illuminate\Validation\Rule;
 
 class StoreSavingsTransactionRequest extends ApiFormRequest
@@ -21,9 +22,10 @@ class StoreSavingsTransactionRequest extends ApiFormRequest
             'type' => ['nullable', Rule::in(SavingsTransaction::TYPES)],
             'amount' => [$required, 'numeric', 'min:0.01', 'max:999999999'],
             'transaction_date' => [$required, 'date_format:Y-m-d'],
-            'savings_goal_id' => ['nullable', 'integer', Rule::exists('savings_goals', 'id')->where('user_id', $user->id)->whereNull('deleted_at')],
+            // Own goals and the shared goals the user accepted.
+            'savings_goal_id' => ['nullable', 'integer', Rule::in(app(GoalSharingService::class)->contributableGoalIds($user))],
             // Savings always come from (or go back to) one of the user's accounts.
-            'wallet_id' => [$required, 'integer', Rule::exists('wallets', 'id')->where('user_id', $user->id)->whereNull('deleted_at')],
+            'wallet_id' => [$required, 'integer', Rule::in(app(\App\Services\WalletSharingService::class)->accessibleWalletIds($user))],
             'notes' => ['nullable', 'string', 'max:1000'],
         ];
     }
