@@ -30,7 +30,7 @@ class StoreLoanRequest extends ApiFormRequest
             'start_date' => [$required, 'date_format:Y-m-d'],
             'due_date' => ['nullable', 'date_format:Y-m-d'],
             'next_due_date' => ['nullable', 'date_format:Y-m-d'],
-            'wallet_id' => ['nullable', 'integer', Rule::exists('wallets', 'id')->where('user_id', $user->id)->whereNull('deleted_at')],
+            'wallet_id' => ['nullable', 'integer', Rule::in(app(\App\Services\WalletSharingService::class)->accessibleWalletIds($user))],
             'via_payroll' => ['nullable', 'boolean'],
             'is_closed' => ['nullable', 'boolean'],
             'notes' => ['nullable', 'string', 'max:1000'],
