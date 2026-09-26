@@ -4,6 +4,7 @@ namespace App\GraphQL\Queries;
 
 use App\Exceptions\ApiException;
 use App\GraphQL\Support\ResolvesApi;
+use App\Http\Resources\AppNotificationResource;
 use App\Http\Resources\AttendanceRecordResource;
 use App\Http\Resources\ExpenseCategoryResource;
 use App\Http\Resources\ExpenseResource;
@@ -12,29 +13,36 @@ use App\Http\Resources\LeaveRecordResource;
 use App\Http\Resources\LoanResource;
 use App\Http\Resources\NotificationSettingResource;
 use App\Http\Resources\ProfileResource;
+use App\Http\Resources\RecurringExpenseResource;
 use App\Http\Resources\SalaryAdjustmentResource;
 use App\Http\Resources\SalaryPeriodResource;
 use App\Http\Resources\SalaryReceiptResource;
 use App\Http\Resources\SalarySettingResource;
+use App\Http\Resources\SavingsGoalMemberResource;
 use App\Http\Resources\SavingsGoalResource;
 use App\Http\Resources\SavingsTransactionResource;
 use App\Http\Resources\UserResource;
+use App\Http\Resources\WalletMemberResource;
 use App\Http\Resources\WalletResource;
 use App\Http\Resources\WalletTransferResource;
 use App\Http\Resources\WorkScheduleResource;
 use App\Models\SalaryAdjustment;
 use App\Models\SalaryPeriod;
+use App\Services\AppNotificationService;
 use App\Services\AttendanceService;
 use App\Services\DashboardService;
 use App\Services\ExpenseService;
+use App\Services\GoalSharingService;
 use App\Services\LoanService;
 use App\Services\NotificationService;
+use App\Services\RecurringExpenseService;
 use App\Services\SalaryPeriodService;
 use App\Services\SalaryReceiptService;
 use App\Services\SalaryService;
 use App\Services\SavingsService;
 use App\Services\StatisticsService;
 use App\Services\WalletService;
+use App\Services\WalletSharingService;
 use App\Services\WorkScheduleService;
 use App\Support\Money;
 use Carbon\CarbonImmutable;
@@ -57,6 +65,10 @@ class ApiQueries
         protected SavingsService $savings,
         protected WalletService $wallets,
         protected LoanService $loans,
+        protected GoalSharingService $sharing,
+        protected RecurringExpenseService $recurring,
+        protected AppNotificationService $inbox,
+        protected WalletSharingService $walletSharing,
     ) {}
 
     public function me($root, array $args, GraphQLContext $context): array
@@ -269,9 +281,34 @@ class ApiQueries
 
     public function goals($root, array $args, GraphQLContext $context): array
     {
-        $goals = $this->user($context)->savingsGoals()->with('wallet')->orderBy('is_completed')->orderByDesc('id')->get();
+        $goals = $this->sharing->goalsFor($this->user($context))->orderBy('is_completed')->orderByDesc('savings_goals.id')->get();
 
         return $this->normalize(SavingsGoalResource::collection($goals));
+    }
+
+    public function goalInvites($root, array $args, GraphQLContext $context): array
+    {
+        return $this->normalize(SavingsGoalMemberResource::collection($this->sharing->pendingFor($this->user($context))));
+    }
+
+    public function walletInvites($root, array $args, GraphQLContext $context): array
+    {
+        return $this->normalize(WalletMemberResource::collection($this->walletSharing->pendingFor($this->user($context))));
+    }
+
+    public function recurringExpenses($root, array $args, GraphQLContext $context): array
+    {
+        return $this->normalize(RecurringExpenseResource::collection($this->recurring->list($this->user($context))));
+    }
+
+    public function notifications($root, array $args, GraphQLContext $context): array
+    {
+        $user = $this->user($context);
+
+        return [
+            'unread' => $this->inbox->unreadCount($user),
+            'notifications' => $this->normalize(AppNotificationResource::collection($this->inbox->recent($user, (int) ($args['limit'] ?? 50)))),
+        ];
     }
 
     public function savings($root, array $args, GraphQLContext $context): array
