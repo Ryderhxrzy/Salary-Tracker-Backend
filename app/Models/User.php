@@ -131,6 +131,28 @@ class User extends Authenticatable
     /**
      * The IANA timezone used for all day-boundary calculations for this user.
      */
+    /** Shared goals this user was invited to (any status). */
+    public function goalMemberships(): HasMany
+    {
+        return $this->hasMany(SavingsGoalMember::class);
+    }
+
+    /** Shared accounts this user was invited to (any status). */
+    public function walletMemberships(): HasMany
+    {
+        return $this->hasMany(WalletMember::class);
+    }
+
+    public function recurringExpenses(): HasMany
+    {
+        return $this->hasMany(RecurringExpense::class);
+    }
+
+    public function appNotifications(): HasMany
+    {
+        return $this->hasMany(AppNotification::class);
+    }
+
     public function timezone(): string
     {
         return $this->profile?->timezone ?: config('salary_tracker.timezone', 'Asia/Manila');
