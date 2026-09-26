@@ -12,7 +12,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * A place where money sits: cash on hand, GCash, Maya, a card or a bank account.
  * Balances are computed (opening balance + salary received − expenses − savings).
  */
-#[Fillable(['name', 'type', 'category', 'institution_id', 'account_type', 'last4', 'holder_name', 'color', 'design', 'opening_balance', 'balance_as_of', 'receives_salary', 'is_default', 'sort_order'])]
+#[Fillable(['name', 'type', 'category', 'institution_id', 'account_type', 'last4', 'holder_name', 'color', 'design', 'opening_balance', 'balance_as_of', 'receives_salary', 'is_default', 'is_shared', 'sort_order'])]
 class Wallet extends Model
 {
     use SoftDeletes;
@@ -37,12 +37,38 @@ class Wallet extends Model
     {
         return [
             'design' => 'array',
+            'is_shared' => 'boolean',
             'opening_balance' => 'decimal:2',
             'balance_as_of' => 'date:Y-m-d',
             'receives_salary' => 'boolean',
             'is_default' => 'boolean',
             'sort_order' => 'integer',
         ];
+    }
+
+    /** The person who created the account (the only one who can edit or delete it). */
+    public function owner(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'user_id');
+    }
+
+    /** People invited to a shared account, pending or accepted. */
+    public function members(): HasMany
+    {
+        return $this->hasMany(WalletMember::class);
+    }
+
+    /** Owner + accepted members as users. */
+    public function participants(): \Illuminate\Support\Collection
+    {
+        $users = collect([$this->owner]);
+        foreach ($this->members()->where('status', WalletMember::STATUS_ACCEPTED)->with('user.profile')->get() as $member) {
+            if ($member->user) {
+                $users->push($member->user);
+            }
+        }
+
+        return $users->filter()->unique('id')->values();
     }
 
     public function user(): BelongsTo
