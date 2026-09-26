@@ -22,6 +22,8 @@ cmds = [
 ]
 
 [start]
-# migrate -> clear config -> warm the GraphQL schema cache -> php-fpm + nginx (same as the
+# migrate -> clear config -> warm the GraphQL schema cache -> start the Laravel scheduler in the
+# background (`schedule:work` ticks every minute: recurring bills are recorded at 07:00 Manila,
+# so no cron / extra service has to be created on the platform) -> php-fpm + nginx (same as the
 # stock PHP image; falls back to `artisan serve` if the image layout ever differs).
-cmd = "php artisan migrate --force --no-interaction && php artisan config:clear && php artisan lighthouse:cache && chmod -R ugo+rwX storage bootstrap/cache; if [ -f /assets/scripts/prestart.pl ]; then perl /assets/scripts/prestart.pl /assets/nginx.template.conf /nginx.conf && (php-fpm -y /assets/php-fpm.conf & nginx -c /nginx.conf); else php artisan serve --host=0.0.0.0 --port=${PORT:-80}; fi"
+cmd = "php artisan migrate --force --no-interaction && php artisan config:clear && php artisan lighthouse:cache && chmod -R ugo+rwX storage bootstrap/cache; (php artisan schedule:work > storage/logs/scheduler.log 2>&1 &); if [ -f /assets/scripts/prestart.pl ]; then perl /assets/scripts/prestart.pl /assets/nginx.template.conf /nginx.conf && (php-fpm -y /assets/php-fpm.conf & nginx -c /nginx.conf); else php artisan serve --host=0.0.0.0 --port=${PORT:-80}; fi"
