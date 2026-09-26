@@ -2,9 +2,12 @@
 
 namespace App\Services;
 
+use App\Models\Expense;
 use App\Models\Income;
 use App\Models\Loan;
 use App\Models\LoanPayment;
+use App\Models\SalaryReceipt;
+use App\Models\SavingsGoal;
 use App\Models\SavingsTransaction;
 use App\Models\User;
 use App\Models\Wallet;
@@ -26,7 +29,7 @@ use Illuminate\Support\Collection;
  */
 class WalletService
 {
-    public function __construct(protected SalaryPeriodService $periods) {}
+    public function __construct(protected SalaryPeriodService $periods, protected WalletSharingService $sharing) {}
 
     /**
      * The user's wallets, loaded once per request. A user without any account gets a
@@ -131,15 +134,19 @@ class WalletService
      */
     public function withBalances(User $user): Collection
     {
-        $wallets = $this->ensureDefaults($user);
+        $this->ensureDefaults($user);
+        // Own accounts first (in their order), then the shared accounts this user accepted.
+        // Every movement that names a wallet counts on it, whoever recorded it (that is what "shared" means).
+        $wallets = $this->sharing->walletsFor($user)->get()->sortBy([fn (Wallet $a, Wallet $b) => ((int) $a->user_id === (int) $user->id ? 0 : 1) <=> ((int) $b->user_id === (int) $user->id ? 0 : 1) ?: $a->sort_order <=> $b->sort_order ?: $a->id <=> $b->id])->values();
         if ($wallets->isEmpty()) {
             return $wallets;
         }
+        $ids = $wallets->pluck('id')->all();
         $earliest = $wallets->min(fn (Wallet $w) => $w->balance_as_of->toDateString());
 
         // Expenses: only those paid from a wallet lower it ("not from a wallet" is tracked, not charged).
         $spent = [];
-        $user->expenses()
+        Expense::query()->whereIn('wallet_id', $ids)
             ->where('expense_date', '>=', $earliest)
             ->whereNotNull('wallet_id')
             ->selectRaw('wallet_id, expense_date, amount')
@@ -153,7 +160,7 @@ class WalletService
 
         // Other income (side hustle…) that went into a wallet.
         $income = [];
-        $user->incomes()->whereNotNull('wallet_id')->where('income_date', '>=', $earliest)->get(['wallet_id', 'income_date', 'amount'])
+        Income::query()->whereIn('wallet_id', $ids)->where('income_date', '>=', $earliest)->get(['wallet_id', 'income_date', 'amount'])
             ->each(function (Income $row) use (&$income, $wallets) {
                 $wallet = $wallets->firstWhere('id', $row->wallet_id);
                 if ($wallet && $row->income_date->toDateString() >= $wallet->balance_as_of->toDateString()) {
@@ -162,9 +169,8 @@ class WalletService
             });
 
         $saved = [];
-        $user->savingsTransactions()
+        SavingsTransaction::query()->whereIn('wallet_id', $ids)
             ->where('transaction_date', '>=', $earliest)
-            ->whereNotNull('wallet_id')
             ->get(['wallet_id', 'type', 'transaction_date', 'amount'])
             ->each(function (SavingsTransaction $row) use (&$saved, $wallets) {
                 $wallet = $wallets->firstWhere('id', $row->wallet_id);
@@ -175,14 +181,14 @@ class WalletService
 
         // Loans: the principal received (borrowed) or handed out (lent), then every payment.
         $loans = [];
-        $user->loans()->whereNotNull('wallet_id')->where('start_date', '>=', $earliest)->get(['wallet_id', 'type', 'start_date', 'principal_amount'])
+        Loan::query()->whereIn('wallet_id', $ids)->where('start_date', '>=', $earliest)->get(['wallet_id', 'type', 'start_date', 'principal_amount'])
             ->each(function (Loan $loan) use (&$loans, $wallets) {
                 $wallet = $wallets->firstWhere('id', $loan->wallet_id);
                 if ($wallet && $loan->start_date->toDateString() >= $wallet->balance_as_of->toDateString()) {
                     $loans[$wallet->id] = ($loans[$wallet->id] ?? 0.0) + ($loan->isBorrowed() ? 1 : -1) * (float) $loan->principal_amount;
                 }
             });
-        $user->loanPayments()->with('loan:id,type')->whereNotNull('wallet_id')->where('via_payroll', false)->where('payment_date', '>=', $earliest)->get()
+        LoanPayment::query()->with('loan:id,type')->whereIn('wallet_id', $ids)->where('via_payroll', false)->where('payment_date', '>=', $earliest)->get()
             ->each(function (LoanPayment $payment) use (&$loans, $wallets) {
                 $wallet = $wallets->firstWhere('id', $payment->wallet_id);
                 if ($wallet && $payment->loan && $payment->payment_date->toDateString() >= $wallet->balance_as_of->toDateString()) {
@@ -191,10 +197,10 @@ class WalletService
             });
 
         // Money saved for a goal sits in the wallet that keeps the goal (deposits land there, withdrawals leave it).
-        $goalWallets = $user->savingsGoals()->whereNotNull('wallet_id')->pluck('wallet_id', 'id');
+        $goalWallets = SavingsGoal::query()->whereIn('wallet_id', $ids)->pluck('wallet_id', 'id');
         $goalsIn = [];
         if ($goalWallets->isNotEmpty()) {
-            $user->savingsTransactions()->where('transaction_date', '>=', $earliest)->whereIn('savings_goal_id', $goalWallets->keys())
+            SavingsTransaction::query()->where('transaction_date', '>=', $earliest)->whereIn('savings_goal_id', $goalWallets->keys())
                 ->get(['savings_goal_id', 'type', 'transaction_date', 'amount'])
                 ->each(function (SavingsTransaction $row) use (&$goalsIn, $wallets, $goalWallets) {
                     $wallet = $wallets->firstWhere('id', $goalWallets[$row->savings_goal_id]);
@@ -203,13 +209,13 @@ class WalletService
                     }
                 });
         }
-        $goalsHeld = $user->savingsGoals()->whereNotNull('wallet_id')->where('type', '!=', 'spending_limit')->get(['wallet_id', 'current_amount'])
+        $goalsHeld = SavingsGoal::query()->whereIn('wallet_id', $ids)->where('type', '!=', 'spending_limit')->get(['wallet_id', 'current_amount'])
             ->groupBy('wallet_id')->map(fn (Collection $group) => (float) $group->sum('current_amount'));
 
         // Transfers between the user's own wallets: the amount moves from one to the other.
         $transfersIn = [];
         $transfersOut = [];
-        $user->walletTransfers()->where('transfer_date', '>=', $earliest)->get(['from_wallet_id', 'to_wallet_id', 'transfer_date', 'amount'])
+        WalletTransfer::query()->where('transfer_date', '>=', $earliest)->where(fn ($q) => $q->whereIn('from_wallet_id', $ids)->orWhereIn('to_wallet_id', $ids))->get(['from_wallet_id', 'to_wallet_id', 'transfer_date', 'amount'])
             ->each(function (WalletTransfer $transfer) use (&$transfersIn, &$transfersOut, $wallets) {
                 $date = $transfer->transfer_date->toDateString();
                 $from = $wallets->firstWhere('id', $transfer->from_wallet_id);
@@ -245,6 +251,6 @@ class WalletService
     {
         $asOf = $wallet->balance_as_of->toDateString();
 
-        return Money::round((float) $user->salaryReceipts()->where('wallet_id', $wallet->id)->where('received_date', '>=', $asOf)->sum('amount')) ?? 0.0;
+        return Money::round((float) SalaryReceipt::query()->where('wallet_id', $wallet->id)->where('received_date', '>=', $asOf)->sum('amount')) ?? 0.0;
     }
 }
